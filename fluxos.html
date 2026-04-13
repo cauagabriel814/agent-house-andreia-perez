@@ -1,0 +1,1747 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Residere — Mapa de Fluxos</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #263548;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --small: #64748b;
+
+    --entry:    #818cf8;
+    --router:   #c084fc;
+    --specific: #22d3ee;
+    --buyer:    #34d399;
+    --launch:   #60a5fa;
+    --investor: #fbbf24;
+    --sale:     #f87171;
+    --rental:   #a78bfa;
+    --exchange: #f472b6;
+    --timeout:  #94a3b8;
+    --faq:      #6ee7b7;
+    --end:      #475569;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  /* ── NAV ─────────────────────────────────────────────────── */
+  nav {
+    position: fixed;
+    top: 0; left: 0;
+    width: 200px;
+    height: 100vh;
+    background: #0a1120;
+    border-right: 1px solid var(--border);
+    padding: 20px 12px;
+    overflow-y: auto;
+    z-index: 100;
+  }
+
+  nav h2 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--small);
+    margin-bottom: 12px;
+  }
+
+  nav a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 12px;
+    transition: all .15s;
+    margin-bottom: 2px;
+  }
+
+  nav a:hover { background: var(--surface2); color: var(--text); }
+  nav a .dot {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── MAIN ─────────────────────────────────────────────────── */
+  main {
+    margin-left: 200px;
+    padding: 32px 40px 80px;
+    max-width: 1400px;
+  }
+
+  h1 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    background: linear-gradient(90deg, var(--entry), var(--router));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle { color: var(--muted); margin-bottom: 32px; font-size: 13px; }
+
+  /* ── LEGEND ───────────────────────────────────────────────── */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 40px;
+    padding: 16px;
+    background: var(--surface);
+    border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* ── FLOW SECTION ─────────────────────────────────────────── */
+  .flow-section {
+    margin-bottom: 56px;
+    scroll-margin-top: 24px;
+  }
+
+  .flow-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .flow-title-dot {
+    width: 12px; height: 12px;
+    border-radius: 3px;
+  }
+
+  /* ── FLOW COLUMN ──────────────────────────────────────────── */
+  .flow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  /* ── NODE ─────────────────────────────────────────────────── */
+  .node {
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .node-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .node-icon { font-size: 15px; }
+  .node-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .node-tag {
+    margin-left: auto;
+    font-size: 9px;
+    background: var(--surface2);
+    color: var(--small);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+  }
+
+  .node-body { padding: 10px 14px 12px; }
+  .node-msg {
+    color: var(--text);
+    font-size: 12px;
+    white-space: pre-wrap;
+    line-height: 1.55;
+  }
+  .node-msg.muted { color: var(--muted); font-style: italic; }
+
+  .node-note {
+    margin-top: 7px;
+    font-size: 11px;
+    color: var(--small);
+    border-top: 1px solid var(--border);
+    padding-top: 7px;
+  }
+
+  /* Node color stripe */
+  .node::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    border-radius: 10px 0 0 10px;
+    background: var(--nc);
+  }
+
+  /* END node */
+  .node-end {
+    text-align: center;
+    background: var(--end);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 8px 24px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── CONNECTOR ────────────────────────────────────────────── */
+  .connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 28px;
+    color: var(--border);
+    font-size: 20px;
+    position: relative;
+  }
+  .connector::before {
+    content: '';
+    position: absolute;
+    left: 50%; top: 0; bottom: 0;
+    width: 2px;
+    background: var(--border);
+    transform: translateX(-50%);
+    z-index: 0;
+  }
+  .connector-label {
+    background: var(--bg);
+    color: var(--small);
+    font-size: 10px;
+    padding: 0 6px;
+    z-index: 1;
+    position: relative;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── DECISION ─────────────────────────────────────────────── */
+  .decision {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 8px 20px;
+    max-width: 400px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .decision-icon { font-size: 14px; }
+
+  /* ── BRANCH ───────────────────────────────────────────────── */
+  .branches {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    max-width: 1100px;
+    align-items: flex-start;
+    justify-content: center;
+  }
+
+  .branch {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .branch-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 2px 10px;
+    border-radius: 20px;
+    margin-bottom: 4px;
+  }
+
+  /* ── ENTRY OVERVIEW ───────────────────────────────────────── */
+  .entry-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+    align-items: center;
+    justify-items: center;
+    width: 100%;
+  }
+
+  /* ── ROUTER BRANCHES ──────────────────────────────────────── */
+  .router-out {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  .router-badge {
+    padding: 5px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid;
+    cursor: default;
+  }
+
+  /* ── FLOW GRID (multi-col) ────────────────────────────────── */
+  .multi-flow {
+    display: grid;
+    gap: 24px;
+  }
+  .multi-flow.cols2 { grid-template-columns: 1fr 1fr; }
+  .multi-flow.cols3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  /* ── SCORE BRANCH ─────────────────────────────────────────── */
+  .score-branches {
+    display: flex;
+    gap: 12px;
+    width: 100%;
+    max-width: 960px;
+    align-items: flex-start;
+    justify-content: center;
+  }
+  .score-branch { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+  .score-badge {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 3px 12px;
+    border-radius: 20px;
+    margin-bottom: 4px;
+    border: 1px solid transparent;
+  }
+  .badge-quente { background: #7f1d1d33; color: #fca5a5; border-color: #ef4444; }
+  .badge-morno  { background: #78350f33; color: #fcd34d; border-color: #f59e0b; }
+  .badge-frio   { background: #1e3a5f33; color: #93c5fd; border-color: #3b82f6; }
+
+  /* ── SECTION SEPARATOR ────────────────────────────────────── */
+  .sep {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+
+  /* ── TIMEOUT BOX ──────────────────────────────────────────── */
+  .timeout-row {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ NAV ═══════════════════════════════════ -->
+<nav>
+  <h2>Fluxos</h2>
+  <a href="#entry"><span class="dot" style="background:var(--entry)"></span>Entrada / Router</a>
+  <a href="#specific"><span class="dot" style="background:var(--specific)"></span>Interesse Específico</a>
+  <a href="#buyer"><span class="dot" style="background:var(--buyer)"></span>Comprador (Buyer)</a>
+  <a href="#pronto"><span class="dot" style="background:var(--buyer)"></span>↳ Imóvel Pronto</a>
+  <a href="#launch"><span class="dot" style="background:var(--launch)"></span>↳ Lançamento</a>
+  <a href="#investor"><span class="dot" style="background:var(--investor)"></span>Investidor</a>
+  <a href="#sale"><span class="dot" style="background:var(--sale)"></span>Venda</a>
+  <a href="#rental"><span class="dot" style="background:var(--rental)"></span>Locação</a>
+  <a href="#exchange"><span class="dot" style="background:var(--exchange)"></span>Permuta</a>
+  <a href="#timeout"><span class="dot" style="background:var(--timeout)"></span>Timeout</a>
+  <a href="#faq"><span class="dot" style="background:var(--faq)"></span>FAQ / Genérico</a>
+</nav>
+
+<!-- ════════════════════════════════════ MAIN ════════════════════════════════════ -->
+<main>
+  <h1>Agent Residere — Mapa de Fluxos</h1>
+  <p class="subtitle">Todos os caminhos possíveis do agente WhatsApp Andreia Perez · Clique nos títulos do menu para navegar</p>
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--entry)"></div>Entrada/Greeting</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--router)"></div>Router</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--specific)"></div>Específico</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--buyer)"></div>Buyer / Pronto</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--launch)"></div>Lançamento</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--investor)"></div>Investidor</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--sale)"></div>Venda</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--rental)"></div>Locação</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--exchange)"></div>Permuta</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--timeout)"></div>Timeout</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--faq)"></div>FAQ / Genérico</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--end)"></div>END</div>
+  </div>
+
+  <!-- ════════════════════ ENTRY / ROUTER ════════════════════ -->
+  <div class="flow-section" id="entry">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--entry)"></div>
+      Entrada &amp; Roteamento
+    </div>
+
+    <div class="flow-col">
+
+      <!-- Lead chega -->
+      <div class="node" style="--nc:var(--entry)">
+        <div class="node-head">
+          <span class="node-icon">📱</span>
+          <span class="node-label" style="color:var(--entry)">Lead envia mensagem</span>
+          <span class="node-tag">webhook</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg muted">Webhook UAZAPI recebe a mensagem e dispara o agente</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">route_entry()</span></div>
+
+      <!-- GREETING decision -->
+      <div class="decision">
+        <span class="decision-icon">⏰</span>
+        <span>Verificação: horário comercial + tipo de lead</span>
+      </div>
+
+      <div class="connector" style="height:16px"></div>
+
+      <!-- Greeting branches -->
+      <div class="branches" style="max-width:900px">
+
+        <!-- Fora de horário -->
+        <div class="branch">
+          <div class="branch-label" style="color:#f87171;border-color:#f87171">fora do horário</div>
+          <div class="node" style="--nc:var(--timeout)">
+            <div class="node-head">
+              <span class="node-icon">🌙</span>
+              <span class="node-label" style="color:var(--timeout)">Greeting · Fora Horário</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Olá! Agradeço muito seu contato.
+Nosso atendimento é de segunda a sexta das 8h às 18h e sábados das 8h às 12h.
+Mas não se preocupe! Assim que nosso horário iniciar, você terá prioridade no atendimento.
+Até logo! 😊</div>
+              <div class="node-note">💾 TAG: lead_fora_horario | ⏱ Job: retorno_9h no próximo dia útil</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <!-- Lead novo -->
+        <div class="branch">
+          <div class="branch-label">lead novo</div>
+          <div class="node" style="--nc:var(--entry)">
+            <div class="node-head">
+              <span class="node-icon">👋</span>
+              <span class="node-label" style="color:var(--entry)">Greeting · Novo</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Se mensagem sem intenção clara:
+"Olá! Aqui é a Andreia Perez, especialista em imóveis de alto padrão em Cuiabá! 🏠 Posso te ajudar a encontrar o imóvel dos seus sonhos ou a vender com a máxima valorização. Me conta, como posso te ajudar?"
+
+Se mensagem com intenção: saudação curta via LLM (gpt-4o-mini)</div>
+              <div class="node-note">current_node = "greeting" · aguarda resposta</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">lead responde</span></div>
+          <div class="node" style="--nc:var(--entry)">
+            <div class="node-head">
+              <span class="node-icon">👂</span>
+              <span class="node-label" style="color:var(--entry)">Active Listen</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg muted">Registra mensagem · awaiting_response = False</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">→ router</span></div>
+          <div class="node" style="--nc:var(--router)">
+            <div class="node-head">
+              <span class="node-icon">🧭</span>
+              <span class="node-label" style="color:var(--router)">Router (LLM)</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg muted">Classifica intenção via GPT · Detecta mudança de fluxo e envia mensagem de transição se necessário</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lead recorrente -->
+        <div class="branch">
+          <div class="branch-label" style="color:#34d399;border-color:#34d399">lead recorrente</div>
+          <div class="node" style="--nc:var(--buyer)">
+            <div class="node-head">
+              <span class="node-icon">🔄</span>
+              <span class="node-label" style="color:var(--buyer)">Greeting · Recorrente</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Olá, {nome}! Que bom te ver de volta! 😊
+[Se interesse+região conhecidos:]
+Da última vez você estava interessado em {interesse} na região {regiao}.
+Em que posso te ajudar hoje?</div>
+              <div class="node-note">current_node = "greeting" · aguarda resposta</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">lead responde</span></div>
+          <div style="color:var(--muted);font-size:11px;text-align:center">→ active_listen → router</div>
+        </div>
+
+      </div><!-- /branches -->
+
+      <div class="connector" style="height:16px"></div>
+
+      <!-- Router output badges -->
+      <div class="decision">
+        <span class="decision-icon">🧭</span>
+        <span>Router detecta intenção e encaminha para:</span>
+      </div>
+      <div class="connector" style="height:12px"></div>
+      <div class="router-out">
+        <div class="router-badge" style="color:var(--specific);border-color:var(--specific)">interesse_especifico → Specific</div>
+        <div class="router-badge" style="color:var(--investor);border-color:var(--investor)">investidor → Investor</div>
+        <div class="router-badge" style="color:var(--sale);border-color:var(--sale)">venda → Sale</div>
+        <div class="router-badge" style="color:var(--rental);border-color:var(--rental)">locacao → Rental</div>
+        <div class="router-badge" style="color:var(--exchange);border-color:var(--exchange)">permuta → Exchange</div>
+        <div class="router-badge" style="color:var(--faq);border-color:var(--faq)">faq → FAQ</div>
+        <div class="router-badge" style="color:var(--muted);border-color:var(--border)">generico → Generic</div>
+      </div>
+    </div>
+  </div><!-- /entry -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ SPECIFIC ════════════════════ -->
+  <div class="flow-section" id="specific">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--specific)"></div>
+      Fluxo: Interesse Específico
+    </div>
+
+    <div class="flow-col">
+
+      <div class="node" style="--nc:var(--specific)">
+        <div class="node-head">
+          <span class="node-icon">🔍</span>
+          <span class="node-label" style="color:var(--specific)">specific_node · Entrada</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Me conta uma coisa: você viu algum anúncio específico nosso? Ou está procurando em geral?</div>
+          <div class="node-note">last_question = "specific_interesse"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="decision">
+        <span class="decision-icon">⬦</span>
+        <span>Lead viu anúncio específico ou procura em geral?</span>
+      </div>
+
+      <div class="connector" style="height:12px"></div>
+
+      <div class="branches">
+
+        <div class="branch">
+          <div class="branch-label" style="color:var(--specific);border-color:var(--specific)">anúncio específico</div>
+          <div class="node" style="--nc:var(--specific)">
+            <div class="node-head">
+              <span class="node-icon">🏠</span>
+              <span class="node-label" style="color:var(--specific)">specific_node · Pergunta empreendimento</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Ah, que legal! 🏠
+
+Qual empreendimento chamou sua atenção?</div>
+              <div class="node-note">last_question = "specific_empreendimento"</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">lead informa</span></div>
+          <div class="node" style="--nc:var(--specific)">
+            <div class="node-head">
+              <span class="node-icon">📩</span>
+              <span class="node-label" style="color:var(--specific)">Notifica Corretor</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg muted">Salva tag lead_imovel_especifico · Envia notificação ao corretor via WhatsApp com dados do lead</div>
+              <div class="node-note">💾 TAG: lead_imovel_especifico</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <div class="branch">
+          <div class="branch-label">procura em geral</div>
+          <div class="node" style="--nc:var(--buyer)">
+            <div class="node-head">
+              <span class="node-icon">🏗️</span>
+              <span class="node-label" style="color:var(--buyer)">→ Buyer · Pergunta tipo</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Você prefere um *imóvel pronto para morar* ou tem interesse em um *lançamento* (imóvel na planta ou em construção, com condições diferenciadas de pagamento)?</div>
+              <div class="node-note">current_node = "buyer" · last_question = None</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div style="color:var(--muted);font-size:11px">→ continua em <strong>Buyer Flow</strong> abaixo</div>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- /specific -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ BUYER ════════════════════ -->
+  <div class="flow-section" id="buyer">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--buyer)"></div>
+      Fluxo: Comprador (Buyer) — Qualificação de Tipo e Ticket
+    </div>
+
+    <div class="flow-col">
+
+      <!-- Etapa 1 -->
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">🏗️</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_node · Etapa 1 (last_question = None)</span>
+          <span class="node-tag">Classifica tipo</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg muted">LLM analisa se resposta é: lançamento | pronto | indefinido</div>
+          <div class="node-note">💾 TAG: situacao_imovel</div>
+        </div>
+      </div>
+
+      <div class="connector" style="height:12px"></div>
+
+      <div class="branches">
+        <div class="branch">
+          <div class="branch-label" style="color:#fbbf24;border-color:#fbbf24">indefinido (1ª vez)</div>
+          <div class="node" style="--nc:#fbbf24">
+            <div class="node-head">
+              <span class="node-icon">🔁</span>
+              <span class="node-label" style="color:#fbbf24">Re-ask (máx 1x)</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Qual é a sua preferência:
+
+• *Imóvel pronto para morar* — disponível imediatamente
+• *Lançamento* — imóvel na planta ou em construção, com condições especiais</div>
+              <div class="node-note">reask_count +1 · last_question mantido em None</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="branch-label" style="color:#94a3b8;border-color:#94a3b8">indefinido (2ª vez)</div>
+          <div class="node" style="--nc:var(--timeout)">
+            <div class="node-head">
+              <span class="node-icon">⚙️</span>
+              <span class="node-label" style="color:var(--timeout)">Fallback automático</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg muted">Usa tag situacao_imovel se existir, senão assume "pronto"</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="branch">
+          <div class="branch-label" style="color:var(--buyer);border-color:var(--buyer)">lançamento ou pronto</div>
+          <div class="node" style="--nc:var(--buyer)">
+            <div class="node-head">
+              <span class="node-icon">💰</span>
+              <span class="node-label" style="color:var(--buyer)">buyer_node · Pergunta ticket</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Qual faixa de investimento você considera para este imóvel?</div>
+              <div class="node-note">last_question = "buyer_tipo"</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <!-- Etapa 2 -->
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">💳</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_node · Etapa 2 (last_question = "buyer_tipo")</span>
+          <span class="node-tag">Verifica ticket</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg muted">LLM verifica se ticket está abaixo de R$ 400K</div>
+        </div>
+      </div>
+
+      <div class="connector" style="height:12px"></div>
+
+      <div class="branches">
+        <div class="branch">
+          <div class="branch-label" style="color:#f87171;border-color:#f87171">abaixo de R$ 400K</div>
+          <div class="node" style="--nc:var(--sale)">
+            <div class="node-head">
+              <span class="node-icon">🙏</span>
+              <span class="node-label" style="color:var(--sale)">Fora do perfil</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Muito obrigada pelo contato! 🙏
+
+Nossa especialidade são imóveis acima de R$ 400 mil. Para a faixa que você procura, posso te indicar parceiros excelentes!
+
+Posso te passar o contato?</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node" style="--nc:var(--sale)">
+            <div class="node-head">
+              <span class="node-icon">👤</span>
+              <span class="node-label" style="color:var(--sale)">Indica parceiro</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Claro! Segue o contato:
+
+👤 *Carlos Henrique*
+📱 (65) 99210-4832
+
+Ele atende exatamente o seu perfil e vai te ajudar muito bem! 😊</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <div class="branch">
+          <div class="branch-label" style="color:var(--buyer);border-color:var(--buyer)">≥ R$ 400K · tipo = PRONTO</div>
+          <div class="node" style="--nc:var(--buyer)">
+            <div class="node-head">
+              <span class="node-icon">🏡</span>
+              <span class="node-label" style="color:var(--buyer)">→ Pronto: Pergunta nome</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Para te apresentar as melhores opções, qual seu nome?</div>
+              <div class="node-note">last_question = "buyer_pronto_nome"</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div style="color:var(--muted);font-size:11px">→ continua em <strong>Imóvel Pronto</strong> abaixo</div>
+        </div>
+
+        <div class="branch">
+          <div class="branch-label" style="color:var(--launch);border-color:var(--launch)">≥ R$ 400K · tipo = LANÇAMENTO</div>
+          <div class="node" style="--nc:var(--launch)">
+            <div class="node-head">
+              <span class="node-icon">🏗️</span>
+              <span class="node-label" style="color:var(--launch)">→ Launch: Pergunta nome</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">{empreendimento} é um lançamento incrível! 🏠
+
+Vi que você se interessou. Deixa eu te contar mais sobre ele!
+
+Primeiro, qual seu nome?</div>
+              <div class="node-note">current_node = "launch" · last_question = None</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div style="color:var(--muted);font-size:11px">→ continua em <strong>Lançamento</strong> abaixo</div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /buyer -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ PRONTO ════════════════════ -->
+  <div class="flow-section" id="pronto">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--buyer)"></div>
+      Fluxo: Imóvel Pronto (buyer_node · last_question = "buyer_pronto_*")
+    </div>
+
+    <div class="flow-col">
+
+      <!-- Nome já foi coletado na etapa anterior -->
+
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">💳</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_pronto_nome → Forma de Pagamento</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Como você pretende realizar o pagamento?
+
+- *À vista* (desconto especial)
+- *Financiamento bancário*
+- *Permuta* (troca de imóvel)
+- Outra estratégia?
+
+Isso me ajuda a indicar as melhores condições para o seu perfil.</div>
+          <div class="node-note">💾 TAG: lead_identificado · last_question = "buyer_pronto_pagamento"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">⏱️</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_pronto_pagamento → Urgência</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Qual seria o seu prazo ideal para fechar o negócio?
+
+Precisa com urgência (até 30 dias), tem entre 1 e 3 meses, ou está pesquisando com mais calma?</div>
+          <div class="node-note">💾 TAG: forma_pagamento · last_question = "buyer_pronto_urgencia"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">⭐</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_pronto_urgencia → Prioridades</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">O que é mais importante para você no imóvel?
+
+Por exemplo: segurança 24h, lazer completo, vista privilegiada, privacidade, localização, acabamento premium... Me conta o que não pode faltar!</div>
+          <div class="node-note">💾 TAG: urgencia · last_question = "buyer_pronto_prioridades"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">📍</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_pronto_prioridades → Apresentar (região + suítes)</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">{nome}, para te indicar as melhores alternativas do nosso portfólio, me conta um pouco mais:
+
+Qual região de Cuiabá você prefere? E quantas suítes são necessárias?</div>
+          <div class="node-note">💾 TAG: prioridades · Calcula score → notifica corretor · last_question = "buyer_pronto_apresentar"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--buyer)">
+        <div class="node-head">
+          <span class="node-icon">🏘️</span>
+          <span class="node-label" style="color:var(--buyer)">buyer_pronto_apresentar → Busca imóveis + Pergunta visita</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg muted">Extrai região e suítes → busca imóveis no portfólio → envia cards com fotos
+
+Em seguida envia:</div>
+          <div class="node-msg" style="margin-top:8px">Quer agendar uma visita para conhecer o imóvel pessoalmente? 🏠
+
+Nosso corretor pode te mostrar todos os detalhes, tirar suas dúvidas e te ajudar a encontrar as melhores condições.</div>
+          <div class="node-note">💾 TAG: localizacao, lead_suites · last_question = "buyer_pronto_visita"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="decision">
+        <span class="decision-icon">⬦</span>
+        <span>Lead quer agendar visita?</span>
+      </div>
+
+      <div class="connector" style="height:12px"></div>
+
+      <div class="branches">
+
+        <!-- SIM: Visita -->
+        <div class="branch">
+          <div class="branch-label" style="color:var(--buyer);border-color:var(--buyer)">SIM — quer visita</div>
+          <div class="node" style="--nc:var(--buyer)">
+            <div class="node-head">
+              <span class="node-icon">📅</span>
+              <span class="node-label" style="color:var(--buyer)">Agenda visita</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Quando é melhor pra você?
+
+Nosso corretor pode te encontrar lá e mostrar todos os detalhes pessoalmente.</div>
+              <div class="node-note">last_question = "buyer_pronto_data_visita"</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">lead informa data</span></div>
+          <div class="node" style="--nc:var(--buyer)">
+            <div class="node-head">
+              <span class="node-icon">✅</span>
+              <span class="node-label" style="color:var(--buyer)">Visita Confirmada</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Visita agendada! Nosso corretor vai confirmar todos os detalhes por aqui em breve.
+
+Qualquer dúvida, estou à disposição. Até lá, {nome}!</div>
+              <div class="node-note">📩 Notifica corretor com dados completos do lead</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <!-- NÃO: Barreira -->
+        <div class="branch">
+          <div class="branch-label" style="color:#f87171;border-color:#f87171">NÃO — não quer visita</div>
+          <div class="node" style="--nc:var(--sale)">
+            <div class="node-head">
+              <span class="node-icon">🚧</span>
+              <span class="node-label" style="color:var(--sale)">Identifica Barreira</span>
+            </div>
+            <div class="node-body">
+              <div class="node-msg">Sem problema! Vou te enviar todo o material agora. 😊
+
+Me passa seu WhatsApp e e-mail para eu enviar tudo certinho.</div>
+              <div class="node-note">last_question = "buyer_pronto_barreira"</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">lead responde</span></div>
+          <div class="decision">
+            <span class="decision-icon">⬦</span>
+            <span>Tipo de barreira?</span>
+          </div>
+          <div class="connector" style="height:8px"></div>
+          <div class="branches" style="max-width:540px">
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px">financeira</div>
+              <div class="node" style="--nc:var(--sale)">
+                <div class="node-head"><span class="node-icon">💰</span><span class="node-label" style="color:var(--sale);font-size:9px">Consultor Financeiro</span></div>
+                <div class="node-body"><div class="node-msg" style="font-size:11px">Posso te conectar com nosso especialista financeiro para uma conversa rápida e totalmente gratuita, sem nenhum compromisso.</div></div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px">timing</div>
+              <div class="node" style="--nc:var(--sale)">
+                <div class="node-head"><span class="node-icon">📋</span><span class="node-label" style="color:var(--sale);font-size:9px">Lista VIP</span></div>
+                <div class="node-body"><div class="node-msg" style="font-size:11px">Vou te incluir na nossa *Lista VIP* e te manter informado sobre as melhores oportunidades do mercado.</div></div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px">conhecimento</div>
+              <div class="node" style="--nc:var(--sale)">
+                <div class="node-head"><span class="node-icon">🏛️</span><span class="node-label" style="color:var(--sale);font-size:9px">Showroom</span></div>
+                <div class="node-body"><div class="node-msg" style="font-size:11px">Que tal uma visita ao nosso *showroom*? É uma experiência incrível para conhecer de perto a qualidade dos nossos imóveis.</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- /pronto -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ LAUNCH ════════════════════ -->
+  <div class="flow-section" id="launch">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--launch)"></div>
+      Fluxo: Lançamento (launch_node)
+    </div>
+
+    <div class="flow-col">
+
+      <div class="node" style="--nc:var(--launch)">
+        <div class="node-head">
+          <span class="node-icon">👤</span>
+          <span class="node-label" style="color:var(--launch)">launch_node · Etapa 1 — Recebe nome</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg muted">Coleta nome do lead (nome foi pedido antes com LAUNCH_ASK_NOME)</div>
+          <div class="node-note">💾 TAG: lead_lancamento_identificado</div>
+        </div>
+      </div>
+
+      <div class="connector"></div>
+
+      <div class="node" style="--nc:var(--launch)">
+        <div class="node-head">
+          <span class="node-icon">🏢</span>
+          <span class="node-label" style="color:var(--launch)">LAUNCH_APRESENTAR + "Você conhece a região?"</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">{nome}, o {empreendimento} é um lançamento exclusivo no {regiao}. Deixa eu te passar os destaques:
+
+📍 Localização privilegiada
+📅 Entrega prevista: {entrega}
+🛏 {suites} suítes com {diferenciais}
+✨ Acabamento de alto padrão
+💰 Condições especiais de lançamento
+
+Você já conhece a região?</div>
+          <div class="node-note">last_question = "launch_conhece"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="branches" style="max-width:700px">
+        <div class="branch">
+          <div class="branch-label" style="color:var(--launch);border-color:var(--launch)">SIM — conhece</div>
+          <div class="node" style="--nc:var(--launch)">
+            <div class="node-body">
+              <div class="node-msg">Então você já sabe das vantagens da região! 😊
+
+Esse empreendimento vai valorizar ainda mais a área.</div>
+            </div>
+          </div>
+        </div>
+        <div class="branch">
+          <div class="branch-label">NÃO — não conhece</div>
+          <div class="node" style="--nc:var(--launch)">
+            <div class="node-body">
+              <div class="node-msg">Deixa eu te contar sobre o {regiao}:
+
+É uma das regiões mais valorizadas de Cuiabá! {pontos_destaque}
+
+O empreendimento fica a {distancia} de {pontos_referencia}.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector"></div>
+
+      <div class="node" style="--nc:var(--launch)">
+        <div class="node-head">
+          <span class="node-icon">🗺️</span>
+          <span class="node-label" style="color:var(--launch)">LAUNCH_ASK_PLANTA — Tipo de unidade</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Agora me conta:
+
+Qual tipo de unidade te interessa mais?
+Temos plantas de {tipos_unidade} suítes com metragens de {metragem_min} a {metragem_max}m²</div>
+          <div class="node-note">💾 TAG: planta_interesse · last_question = "launch_planta"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--launch)">
+        <div class="node-head">
+          <span class="node-icon">💳</span>
+          <span class="node-label" style="color:var(--launch)">LAUNCH_ASK_PAGAMENTO — Forma de investimento</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">{nome}, como você pretende investir nesse lançamento?
+
+Temos condições exclusivas:
+• Entrada facilitada
+• Parcelas direto com a construtora
+• Possibilidade de uso do FGTS
+• Descontos para pagamento à vista</div>
+          <div class="node-note">💾 TAG: forma_pagamento_lancamento · last_question = "launch_pagamento"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--launch)">
+        <div class="node-head">
+          <span class="node-icon">⏱️</span>
+          <span class="node-label" style="color:var(--launch)">LAUNCH_ASK_URGENCIA — Prazo de decisão</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">E qual seu prazo para decisão?
+
+Pergunto porque temos condições especiais de lançamento que são por tempo limitado e algumas unidades já estão reservadas.</div>
+          <div class="node-note">💾 TAG: urgencia_lancamento · last_question = "launch_urgencia"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--launch)">
+        <div class="node-head">
+          <span class="node-icon">📋</span>
+          <span class="node-label" style="color:var(--launch)">LAUNCH_ASK_CONTATO — Lista VIP</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">{nome}, vou te adicionar na lista VIP do lançamento! 🎉
+
+Me passa seu WhatsApp e e-mail para eu enviar todo o material exclusivo:
+• Plantas e decorados
+• Tabela de preços atualizada
+• Tour virtual 360°
+• Simulação financeira personalizada</div>
+          <div class="node-note">💾 TAG: contato_completo_lancamento · Calcula score · last_question = "launch_contato"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde · score calculado</span></div>
+
+      <div class="decision">
+        <span class="decision-icon">⬦</span>
+        <span>Score do lead</span>
+      </div>
+
+      <div class="connector" style="height:12px"></div>
+
+      <div class="score-branches">
+        <div class="score-branch">
+          <div class="score-badge badge-quente">QUENTE ≥ 85</div>
+          <div class="node" style="--nc:var(--sale)">
+            <div class="node-head"><span class="node-icon">🎯</span><span class="node-label" style="color:var(--sale)">LAUNCH_QUENTE_AGENDAR</span></div>
+            <div class="node-body">
+              <div class="node-msg">{nome}, vou fazer o seguinte: 🎯
+
+Vou agendar uma apresentação exclusiva do lançamento para você com nosso especialista.
+
+Amanhã ou depois de amanhã, qual o melhor dia pra você?</div>
+              <div class="node-note">📩 Notifica corretor</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <div class="score-branch">
+          <div class="score-badge badge-morno">MORNO / FRIO</div>
+          <div class="node" style="--nc:var(--investor)">
+            <div class="node-head"><span class="node-icon">📦</span><span class="node-label" style="color:var(--investor)">LAUNCH_MORNO_MATERIAL</span></div>
+            <div class="node-body">
+              <div class="node-msg">{nome}, vou te enviar todo o material agora mesmo! 📦
+
+Dá uma olhada com calma e depois me conta o que achou.
+
+Qualquer dúvida é só me chamar!
+Em 24h eu retorno pra ver se você precisa de mais alguma informação.</div>
+              <div class="node-note">📩 Notifica corretor</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+      </div>
+
+    </div>
+  </div><!-- /launch -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ INVESTOR ════════════════════ -->
+  <div class="flow-section" id="investor">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--investor)"></div>
+      Fluxo: Investidor (investor_node)
+    </div>
+
+    <div class="flow-col">
+
+      <div class="node" style="--nc:var(--investor)">
+        <div class="node-head">
+          <span class="node-icon">📝</span>
+          <span class="node-label" style="color:var(--investor)">Etapa 1 — INVESTOR_INITIAL</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Investimento em imóveis é uma ótima estratégia! 📝
+
+Você busca retorno com aluguel ou revenda no médio prazo?
+
+Isso vai me ajudar a focar nas melhores oportunidades para sua estratégia!</div>
+          <div class="node-note">last_question = "investor_estrategia"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--investor)">
+        <div class="node-head">
+          <span class="node-icon">🏠</span>
+          <span class="node-label" style="color:var(--investor)">Etapa 2 — INVESTOR_ASK_TIPO_NOME</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Para encontrar o imóvel ideal, me conta sobre suas preferências:
+
+Qual estilo você tem em mente?
+Apartamento de luxo, casa em condomínio fechado, cobertura...?</div>
+          <div class="node-note">💾 TAG: investor_estrategia · + pausa 5s → "E me conta, como é seu nome?" · last_question = "investor_tipo"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--investor)">
+        <div class="node-head">
+          <span class="node-icon">📍</span>
+          <span class="node-label" style="color:var(--investor)">Etapa 3 — INVESTOR_ASK_REGIAO</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">{nome}, qual região de Cuiabá você prefere?
+
+Temos opções incríveis no Jardim Itália, Despraiado, Quilombo, Duque de Caxias...
+Ou você tem outro bairro em mente?</div>
+          <div class="node-note">💾 TAG: lead_identificado, lead_tipo_imovel · + pausa → "Qual faixa de investimento você considera?" · last_question = "investor_regiao"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--investor)">
+        <div class="node-head">
+          <span class="node-icon">🛏️</span>
+          <span class="node-label" style="color:var(--investor)">Etapa 4 — INVESTOR_ASK_NECESSIDADES</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Quantas suítes você precisa?
+E tem alguma preferência especial como closet, sala de cinema, espaço gourmet...?</div>
+          <div class="node-note">💾 TAG: localizacao, faixa_valor · + pausa 15s → "Quantas vagas você precisa?" · + pausa → "Pronto ou lançamento?" · last_question = "investor_necessidades"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde</span></div>
+
+      <div class="node" style="--nc:var(--investor)">
+        <div class="node-head">
+          <span class="node-icon">💰</span>
+          <span class="node-label" style="color:var(--investor)">Etapa 5 — INVESTOR_ASK_FINALIZACAO</span>
+        </div>
+        <div class="node-body">
+          <div class="node-msg">Uma última questão para eu te orientar da melhor forma:
+
+Como você planeja realizar o investimento?
+À vista, financiamento, permuta com outro imóvel, ou tem alguma estratégia específica?</div>
+          <div class="node-note">💾 TAG: lead_suites, lead_vagas, situacao_imovel · + pausa → "Qual é o seu prazo ideal?" · + pausa → "O que é essencial?" · last_question = "investor_finalizacao"</div>
+        </div>
+      </div>
+
+      <div class="connector"><span class="connector-label">lead responde · score calculado</span></div>
+
+      <div class="decision">
+        <span class="decision-icon">⬦</span>
+        <span>Score do investidor</span>
+      </div>
+
+      <div class="connector" style="height:12px"></div>
+
+      <div class="score-branches">
+
+        <!-- QUENTE -->
+        <div class="score-branch">
+          <div class="score-badge badge-quente">QUENTE ≥ 80</div>
+          <div class="node" style="--nc:var(--sale)">
+            <div class="node-head"><span class="node-icon">🎉</span><span class="node-label" style="color:var(--sale)">INVESTOR_QUENTE_OPCOES</span></div>
+            <div class="node-body">
+              <div class="node-msg">{nome}, analisando seu perfil, identifiquei algumas propriedades que combinam perfeitamente com o que você busca! 🎉
+
+Posso te apresentar agora mesmo algumas opções exclusivas?</div>
+              <div class="node-note">🔍 Busca imóveis → envia cards</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node" style="--nc:var(--sale)">
+            <div class="node-head"><span class="node-icon">📅</span><span class="node-label" style="color:var(--sale)">INVESTOR_QUENTE_ASK_VISITA</span></div>
+            <div class="node-body">
+              <div class="node-msg">Esses imóveis estão com alta demanda. Para garantir o melhor atendimento, posso agendar uma visita exclusiva com nosso consultor especializado?
+
+Qual data e horário são melhores para você?</div>
+              <div class="node-note">last_question = "investor_visita"</div>
+            </div>
+          </div>
+          <div class="connector"><span class="connector-label">lead responde</span></div>
+          <div class="branches" style="max-width:400px">
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px">SIM</div>
+              <div class="node" style="--nc:var(--sale)">
+                <div class="node-body"><div class="node-msg" style="font-size:11px">Visita agendada! Nosso consultor entrará em contato em breve para confirmar todos os detalhes.</div></div>
+              </div>
+            </div>
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px">NÃO</div>
+              <div class="node" style="--nc:var(--sale)">
+                <div class="node-body"><div class="node-msg" style="font-size:11px">Vou adorar te receber para visita pessoal. Que dia e horário seria melhor para você? Podemos agendar ainda esta semana?</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <!-- MORNO -->
+        <div class="score-branch">
+          <div class="score-badge badge-morno">MORNO 50–79</div>
+          <div class="node" style="--nc:var(--investor)">
+            <div class="node-head"><span class="node-icon">😊</span><span class="node-label" style="color:var(--investor)">INVESTOR_MORNO_SELECAO</span></div>
+            <div class="node-body">
+              <div class="node-msg">{nome}, foi um prazer conversar com você! 😊
+
+Vou preparar uma seleção personalizada de propriedades e envio para você ainda hoje.
+
+Prefere receber via WhatsApp ou e-mail?
+Me passa seu melhor contato?</div>
+              <div class="node-note">last_question = "investor_morno_contato"</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node" style="--nc:var(--investor)">
+            <div class="node-head"><span class="node-icon">📊</span><span class="node-label" style="color:var(--investor)">INVESTOR_MORNO_CONSULTORIA</span></div>
+            <div class="node-body">
+              <div class="node-msg">Obrigada! Vou enviar a seleção em breve.
+
+Além disso, nossa equipe oferece uma *consultoria financeira gratuita* para ajudar a definir a melhor estratégia de investimento. Gostaria de agendar uma conversa rápida?</div>
+              <div class="node-note">📩 Notifica corretor</div>
+            </div>
+          </div>
+          <div class="connector"></div>
+          <div class="node-end">END</div>
+        </div>
+
+        <!-- FRIO -->
+        <div class="score-branch">
+          <div class="score-badge badge-frio">FRIO &lt; 50</div>
+          <div class="decision" style="max-width:200px">
+            <span class="decision-icon">⬦</span>
+            <span style="font-size:11px">Ticket &lt; R$400K?</span>
+          </div>
+          <div class="connector" style="height:8px"></div>
+          <div class="branches" style="max-width:360px">
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px;color:#f87171;border-color:#f87171">sim → parceiro</div>
+              <div class="node" style="--nc:var(--sale)">
+                <div class="node-body"><div class="node-msg" style="font-size:11px">Obrigada pelo contato! Nossa especialidade são imóveis acima de R$ 400 mil, mas posso te indicar parceiros excelentes!</div></div>
+              </div>
+              <div class="connector"></div>
+              <div class="node-end">END</div>
+            </div>
+            <div class="branch">
+              <div class="branch-label" style="font-size:9px">não → barreira</div>
+              <div class="node" style="--nc:#3b82f6">
+                <div class="node-body">
+                  <div class="node-msg" style="font-size:11px">{nome}, entendo que você quer avaliar com calma! Isso é super importante 😊
+
+O que te impede de avançar agora?
+É questão de orçamento, timing, ou quer conhecer melhor o mercado?</div>
+                  <div class="node-note" style="font-size:10px">→ financeira / timing / conhecimento / nutrição VIP</div>
+                </div>
+              </div>
+              <div class="connector"></div>
+              <div class="node-end">END</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div><!-- /investor -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ SALE / RENTAL / EXCHANGE ════════════════════ -->
+  <div class="multi-flow cols3">
+
+    <!-- SALE -->
+    <div class="flow-section" id="sale">
+      <div class="flow-title">
+        <div class="flow-title-dot" style="background:var(--sale)"></div>
+        Fluxo: Venda (sale_node)
+      </div>
+      <div class="flow-col">
+
+        <div class="node" style="--nc:var(--sale)">
+          <div class="node-head"><span class="node-icon">🏡</span><span class="node-label" style="color:var(--sale)">SALE_INITIAL</span></div>
+          <div class="node-body">
+            <div class="node-msg">Que maravilha! Você quer comercializar sua propriedade! 🏡
+
+Temos expertise em imóveis de alto padrão em Cuiabá e uma carteira exclusiva de clientes.
+
+Me conte um pouco sobre sua propriedade... Em qual região ela está localizada?</div>
+            <div class="node-note">last_question = "sale_regiao"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--sale)">
+          <div class="node-head"><span class="node-icon">🏠</span><span class="node-label" style="color:var(--sale)">SALE_ASK_ESTILO — Estilo</span></div>
+          <div class="node-body">
+            <div class="node-msg">E qual é o estilo da propriedade?
+Casa em condomínio, apartamento, cobertura...</div>
+            <div class="node-note">💾 TAG: regiao_imovel · last_question = "sale_estilo"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--sale)">
+          <div class="node-head"><span class="node-icon">🛏️</span><span class="node-label" style="color:var(--sale)">SALE_ASK_SUITES — Suítes</span></div>
+          <div class="node-body">
+            <div class="node-msg">Entendi! Quantas suítes ela possui?
+
+E me conta sobre os diferenciais:
+área gourmet, piscina, acabamento...</div>
+            <div class="node-note">💾 TAG: estilo_imovel · last_question = "sale_suites"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--sale)">
+          <div class="node-head"><span class="node-icon">📋</span><span class="node-label" style="color:var(--sale)">SALE_ASK_PERGUNTAS_FINAIS</span></div>
+          <div class="node-body">
+            <div class="node-msg">{nome_lead}, algumas perguntas importantes:
+
+• Qual sua expectativa de valor?
+• Qual o prazo que você tem?
+• Já tentou vender antes? Como foi?
+• Aceita trabalhar com exclusividade?</div>
+            <div class="node-note">last_question = "sale_finais"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--sale)">
+          <div class="node-head"><span class="node-icon">🤝</span><span class="node-label" style="color:var(--sale)">SALE_PROPOSTA_VISITA</span></div>
+          <div class="node-body">
+            <div class="node-msg">{nome_lead}, vou te propor o seguinte:
+
+Podemos agendar uma visita técnica com nosso especialista em avaliação para determinar o valor de mercado.
+
+É gratuito e sem compromisso.
+Também vamos conversar sobre nossa estratégia de venda. Que tal?</div>
+            <div class="node-note">last_question = "sale_visita"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="branches" style="max-width:400px">
+          <div class="branch">
+            <div class="branch-label" style="color:var(--sale);border-color:var(--sale)">SIM</div>
+            <div class="node" style="--nc:var(--sale)">
+              <div class="node-body"><div class="node-msg">Vou registrar sua solicitação e um de nossos consultores entrará em contato em breve para confirmar o agendamento da visita técnica.</div><div class="node-note">📩 Notifica corretor</div></div>
+            </div>
+          </div>
+          <div class="branch">
+            <div class="branch-label">NÃO</div>
+            <div class="node" style="--nc:var(--sale)">
+              <div class="node-body"><div class="node-msg">Entendo, sem problema! Quando estiver pronto para avançarmos, é só me chamar aqui.</div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="connector"></div>
+        <div class="node-end">END</div>
+
+      </div>
+    </div>
+
+    <!-- RENTAL -->
+    <div class="flow-section" id="rental">
+      <div class="flow-title">
+        <div class="flow-title-dot" style="background:var(--rental)"></div>
+        Fluxo: Locação (rental_node)
+      </div>
+      <div class="flow-col">
+
+        <div class="node" style="--nc:var(--rental)">
+          <div class="node-head"><span class="node-icon">🏘️</span><span class="node-label" style="color:var(--rental)">RENTAL_INITIAL</span></div>
+          <div class="node-body">
+            <div class="node-msg">Locação de imóveis de alto padrão é nossa especialidade! Cuidamos de todo o processo: divulgação qualificada, seleção criteriosa de inquilinos, vistoria completa, gestão de contratos...
+
+Pode me contar mais sobre seu imóvel? Qual o tipo (casa, apartamento, cobertura...) e em qual região fica?</div>
+            <div class="node-note">last_question = "rental_inicial"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--rental)">
+          <div class="node-head"><span class="node-icon">📋</span><span class="node-label" style="color:var(--rental)">RENTAL_ASK_PERGUNTAS</span></div>
+          <div class="node-body">
+            <div class="node-msg">Para prepararmos a melhor proposta de locação para você, preciso entender mais alguns detalhes:
+
+- Qual valor de locação você tem em mente?
+- O imóvel está ocupado no momento?
+- Precisa de alguma reforma ou está pronto para locação?
+- Já alugou esse imóvel antes? Como foi a experiência?</div>
+            <div class="node-note">💾 TAG: tipo_imovel, regiao_imovel · last_question = "rental_perguntas"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--rental)">
+          <div class="node-head"><span class="node-icon">📧</span><span class="node-label" style="color:var(--rental)">RENTAL_ASK_EMAIL</span></div>
+          <div class="node-body">
+            <div class="node-msg">Com base no que você me contou, nossa equipe vai preparar uma proposta de parceria personalizada com todos os detalhes dos nossos serviços e condições comerciais.
+
+Qual o seu melhor e-mail para eu enviar a proposta?</div>
+            <div class="node-note">last_question = "rental_email"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead informa email</span></div>
+
+        <div class="node" style="--nc:var(--rental)">
+          <div class="node-head"><span class="node-icon">✅</span><span class="node-label" style="color:var(--rental)">RENTAL_ENCERRAMENTO</span></div>
+          <div class="node-body">
+            <div class="node-msg">Proposta enviada com sucesso! Em breve você receberá no seu e-mail todos os detalhes da nossa parceria.
+
+Nossa equipe entrará em contato em até 48 horas para tirar qualquer dúvida e dar continuidade ao processo.</div>
+            <div class="node-note">📩 Notifica corretor</div>
+          </div>
+        </div>
+
+        <div class="connector"></div>
+        <div class="node-end">END</div>
+
+      </div>
+    </div>
+
+    <!-- EXCHANGE -->
+    <div class="flow-section" id="exchange">
+      <div class="flow-title">
+        <div class="flow-title-dot" style="background:var(--exchange)"></div>
+        Fluxo: Permuta (exchange_node)
+      </div>
+      <div class="flow-col">
+
+        <div class="node" style="--nc:var(--exchange)">
+          <div class="node-head"><span class="node-icon">🔄</span><span class="node-label" style="color:var(--exchange)">EXCHANGE_INITIAL</span></div>
+          <div class="node-body">
+            <div class="node-msg">Que interessante! Permuta pode ser uma ótima estratégia 📝 😊
+
+Me conta sobre o imóvel que você tem hoje:
+Onde fica? Qual o tipo e tamanho?
+Quantas suítes? Qual o estado?</div>
+            <div class="node-note">last_question = "exchange_inicial"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--exchange)">
+          <div class="node-head"><span class="node-icon">🏠</span><span class="node-label" style="color:var(--exchange)">EXCHANGE_ASK_DETALHES</span></div>
+          <div class="node-body">
+            <div class="node-msg">{nome}, para nossa equipe preparar a avaliação correta...
+
+Quantas *suítes* tem o imóvel?
+
+E qual é o *estado de conservação*?
+(Novo, ótimo, bom, precisa de reformas...)</div>
+            <div class="node-note">💾 TAG: tipo_imovel, regiao_imovel, estado_conservacao · last_question = "exchange_detalhes"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="node" style="--nc:var(--exchange)">
+          <div class="node-head"><span class="node-icon">📅</span><span class="node-label" style="color:var(--exchange)">EXCHANGE_AGENDAMENTO</span></div>
+          <div class="node-body">
+            <div class="node-msg">{nome}, tenho todas as informações necessárias.
+
+Com esse perfil, nosso especialista vai preparar uma *Avaliação Dupla*:
+
+1. Avaliação detalhada e valoração do seu imóvel atual
+2. Seleção das melhores opções de permuta disponíveis em nosso portfólio
+
+Para confirmarmos o agendamento, você tem algum contato preferencial? (E-mail ou outro WhatsApp)</div>
+            <div class="node-note">💾 TAG: lead_suites, estado_conservacao · last_question = "exchange_contato"</div>
+          </div>
+        </div>
+
+        <div class="connector"><span class="connector-label">lead responde</span></div>
+
+        <div class="branches" style="max-width:360px">
+          <div class="branch">
+            <div class="branch-label" style="color:var(--exchange);border-color:var(--exchange)">tem contato</div>
+            <div class="node" style="--nc:var(--exchange)">
+              <div class="node-body">
+                <div class="node-msg" style="font-size:11px">Nosso especialista em permuta vai entrar em contato em até 24 horas para agendar a Avaliação Dupla presencial.
+
+Qualquer dúvida, estou por aqui. Até logo, {nome}!</div>
+              </div>
+            </div>
+          </div>
+          <div class="branch">
+            <div class="branch-label">sem contato</div>
+            <div class="node" style="--nc:var(--exchange)">
+              <div class="node-body">
+                <div class="node-msg" style="font-size:11px">Entendido! Nosso especialista vai entrar em contato diretamente por este número em até 24 horas para agendar a Avaliação Dupla.
+
+Até logo, {nome}!</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="connector"></div>
+        <div style="color:var(--muted);font-size:11px;text-align:center">📩 Notifica corretor</div>
+        <div class="connector"></div>
+        <div class="node-end">END</div>
+
+      </div>
+    </div>
+
+  </div><!-- /multi-flow -->
+
+  <hr class="sep">
+
+  <!-- ════════════════════ TIMEOUT ════════════════════ -->
+  <div class="flow-section" id="timeout">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--timeout)"></div>
+      Fluxo: Timeout / Inatividade
+    </div>
+
+    <div class="timeout-row">
+
+      <div class="node" style="--nc:var(--timeout);max-width:280px">
+        <div class="node-head"><span class="node-icon">⏱️</span><span class="node-label" style="color:var(--timeout)">Timeout 5 min</span></div>
+        <div class="node-body">
+          <div class="node-msg muted">Envio de "Ei, ainda está aí?" para manter conversa ativa</div>
+          <div class="node-note">timeout_count +1 · awaiting_response = True</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;color:var(--border);font-size:20px">→</div>
+
+      <div class="node" style="--nc:var(--timeout);max-width:280px">
+        <div class="node-head"><span class="node-icon">⌛</span><span class="node-label" style="color:var(--timeout)">Timeout 30 min</span></div>
+        <div class="node-body">
+          <div class="node-msg muted">Lead não respondeu após 30 min total. Salva tag e agenda job de reengajamento.</div>
+          <div class="node-note">💾 TAG: lead_timeout · Job: reengagement em 24h</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;color:var(--border);font-size:20px">→</div>
+
+      <div class="node" style="--nc:var(--timeout);max-width:280px">
+        <div class="node-head"><span class="node-icon">💤</span><span class="node-label" style="color:var(--timeout)">Reengajamento 24h</span></div>
+        <div class="node-body">
+          <div class="node-msg muted">Job dispara mensagem de reengajamento. Se lead responde → greeting_node (saudação recorrente)</div>
+          <div class="node-note">reengagement_node: timeout_count = 0</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;color:var(--border);font-size:20px">→</div>
+
+      <div class="node" style="--nc:var(--timeout);max-width:280px">
+        <div class="node-head"><span class="node-icon">🔕</span><span class="node-label" style="color:var(--timeout)">Inatividade 7 dias</span></div>
+        <div class="node-body">
+          <div class="node-msg muted">Lead sem resposta por 7 dias → marcado como inativo</div>
+          <div class="node-note">💾 TAG: lead_inativo</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;color:var(--border);font-size:20px">→</div>
+      <div class="node-end" style="align-self:center">END</div>
+
+    </div>
+
+    <div style="margin-top:20px;padding:14px 18px;background:var(--surface);border-radius:8px;border:1px solid var(--border);max-width:700px">
+      <div style="font-size:11px;font-weight:700;color:var(--timeout);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em">Recuperação de Timeout</div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.7">
+        Se o lead responde enquanto <code>current_node = "greeting"</code> com um <code>last_question</code> ativo de fluxo específico (ex: <code>buyer_pronto_prioridades</code>), o <code>route_entry()</code> redireciona diretamente para o nó do fluxo correspondente — sem passar pelo router. A mensagem é capturada pelo <code>context_extractor</code> mesmo durante o greeting.
+      </div>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <!-- ════════════════════ FAQ / GENERIC ════════════════════ -->
+  <div class="flow-section" id="faq">
+    <div class="flow-title">
+      <div class="flow-title-dot" style="background:var(--faq)"></div>
+      FAQ &amp; Genérico
+    </div>
+
+    <div class="multi-flow cols2" style="max-width:800px">
+
+      <div class="flow-col">
+        <div class="node" style="--nc:var(--faq)">
+          <div class="node-head"><span class="node-icon">❓</span><span class="node-label" style="color:var(--faq)">faq_node</span></div>
+          <div class="node-body">
+            <div class="node-msg muted">Lead tem dúvida pontual. LLM responde a pergunta usando base de conhecimento do negócio.
+
+Após resposta, retorna ao fluxo ativo anterior (se houver) ou aguarda nova mensagem.</div>
+            <div class="node-note">current_node = "faq" · mantém last_question anterior</div>
+          </div>
+        </div>
+        <div class="connector"></div>
+        <div style="color:var(--muted);font-size:11px;text-align:center">→ retorna ao fluxo ativo ou aguarda</div>
+      </div>
+
+      <div class="flow-col">
+        <div class="node" style="--nc:var(--muted)">
+          <div class="node-head"><span class="node-icon">💬</span><span class="node-label" style="color:var(--muted)">generic_node</span></div>
+          <div class="node-body">
+            <div class="node-msg muted">Intenção não identificada claramente. LLM tenta clarificar o que o lead precisa e redireciona para o fluxo correto.
+
+Se reincidente → trata como FAQ.</div>
+            <div class="node-note">current_node = "generic"</div>
+          </div>
+        </div>
+        <div class="connector"></div>
+        <div style="color:var(--muted);font-size:11px;text-align:center">→ active_listen → router</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="margin-top:60px;padding:20px;border-top:1px solid var(--border);color:var(--small);font-size:11px;text-align:center">
+    Agent Residere · Andreia Perez · Mapa de Fluxos — gerado em 2026-04-09
+  </div>
+
+</main>
+</body>
+</html>

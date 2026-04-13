@@ -1,0 +1,161 @@
+# ============================================================
+# docker-compose.yml — Andreia / Residere Agent
+# Serviços: postgres, rabbitmq, migration, api, worker
+# ============================================================
+services:
+
+  # ----------------------------------------------------------
+  # PostgreSQL 16
+  # ----------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-andreia_db}
+      POSTGRES_USER:     ${POSTGRES_USER:-andreia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-andreia} -d ${POSTGRES_DB:-andreia_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # RabbitMQ 3 (com management UI na porta 15672)
+  # ----------------------------------------------------------
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-andreia}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # Migration — roda alembic upgrade head e sai
+  # Usa URL síncrona (psycopg2) porque o Alembic não suporta asyncpg
+  # ----------------------------------------------------------
+  migration:
+    build: .
+    command: alembic upgrade head
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-andreia_db}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+
+  # ----------------------------------------------------------
+  # API — FastAPI via Uvicorn
+  # ----------------------------------------------------------
+  api:
+    build: .
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      # --- Infra (hosts fixos dentro da rede Docker) ---
+      POSTGRES_HOST:  postgres
+      RABBITMQ_HOST:  rabbitmq
+      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-andreia_db}"
+      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+      # --- App (configurar no EasyPanel UI) ---
+      APP_ENV:
+      DEBUG:
+      WEBHOOK_SECRET:
+      OPENAI_API_KEY:
+      LANGCHAIN_TRACING_V2:
+      LANGCHAIN_API_KEY:
+      LANGCHAIN_PROJECT:
+      UAZAPI_BASE_URL:
+      UAZAPI_TOKEN:
+      UAZAPI_INSTANCE_ID:
+      KOMMO_SUBDOMAIN:
+      KOMMO_ACCESS_TOKEN:
+      KOMMO_PIPELINE_ID:
+      KOMMO_STAGE_MAP:
+      EMAIL_SMTP_HOST:
+      EMAIL_SMTP_PORT:
+      EMAIL_SMTP_USER:
+      EMAIL_SMTP_PASSWORD:
+      EMAIL_FROM:
+      EMAIL_FROM_NAME:
+      CORRETOR_PHONES:
+      JWT_SECRET_KEY:
+      APPOINTMENT_BASE_URL:
+      APPOINTMENT_API_KEY:
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ----------------------------------------------------------
+  # Worker — Consumer RabbitMQ + Scheduler de jobs
+  # ----------------------------------------------------------
+  worker:
+    build: .
+    command: python worker.py
+    environment:
+      # --- Infra (hosts fixos dentro da rede Docker) ---
+      POSTGRES_HOST:  postgres
+      RABBITMQ_HOST:  rabbitmq
+      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-andreia_db}"
+      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+      # --- App (configurar no EasyPanel UI) ---
+      APP_ENV:
+      DEBUG:
+      OPENAI_API_KEY:
+      LANGCHAIN_TRACING_V2:
+      LANGCHAIN_API_KEY:
+      LANGCHAIN_PROJECT:
+      UAZAPI_BASE_URL:
+      UAZAPI_TOKEN:
+      UAZAPI_INSTANCE_ID:
+      KOMMO_SUBDOMAIN:
+      KOMMO_ACCESS_TOKEN:
+      KOMMO_PIPELINE_ID:
+      KOMMO_STAGE_MAP:
+      EMAIL_SMTP_HOST:
+      EMAIL_SMTP_PORT:
+      EMAIL_SMTP_USER:
+      EMAIL_SMTP_PASSWORD:
+      EMAIL_FROM:
+      EMAIL_FROM_NAME:
+      CORRETOR_PHONES:
+      APPOINTMENT_BASE_URL:
+      APPOINTMENT_API_KEY:
+    volumes:
+      - chroma_data:/app/data/chroma
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migration:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+# ----------------------------------------------------------------
+# Volumes persistentes
+# ----------------------------------------------------------------
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  chroma_data:

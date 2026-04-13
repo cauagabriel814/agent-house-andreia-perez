@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "andreia": "./src/agent/graph.py:build_graph",
+    "chat":    "./src/agent/chat.py:build_chat_graph"
+  },
+  "env": ".env"
+}
