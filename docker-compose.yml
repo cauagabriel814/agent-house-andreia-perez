@@ -49,8 +49,7 @@ services:
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
     restart: on-failure
 
   # ----------------------------------------------------------
@@ -91,12 +90,9 @@ services:
       APPOINTMENT_BASE_URL:
       APPOINTMENT_API_KEY:
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      migration:
-        condition: service_completed_successfully
+      - postgres
+      - rabbitmq
+      - migration
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -142,12 +138,9 @@ services:
     volumes:
       - chroma_data:/app/data/chroma
     depends_on:
-      postgres:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      migration:
-        condition: service_completed_successfully
+      - postgres
+      - rabbitmq
+      - migration
     restart: unless-stopped
 
 # ----------------------------------------------------------------
