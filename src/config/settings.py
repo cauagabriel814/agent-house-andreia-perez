@@ -1,10 +1,29 @@
 import json
 
-from pydantic import computed_field
+from pydantic import computed_field, model_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_empty_int_strings(cls, data: dict) -> dict:
+        """Converte strings vazias para o valor padrão dos campos int.
+
+        EasyPanel e alguns orquestradores passam variáveis não configuradas
+        como string vazia ''. Pydantic não consegue coercir '' para int,
+        portanto removemos a chave e deixamos o campo usar seu default.
+        """
+        int_fields = {
+            "api_port", "postgres_port", "rabbitmq_port",
+            "kommo_pipeline_id", "email_smtp_port", "jwt_expire_minutes",
+        }
+        for field in int_fields:
+            if data.get(field) == "":
+                del data[field]
+        return data
+
     # Aplicacao
     app_name: str = "andreia-residere"
     app_env: str = "development"
