@@ -13,7 +13,7 @@ services:
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-andreia_db}
       POSTGRES_USER:     ${POSTGRES_USER:-andreia}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-andreia_internal_pw}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -30,7 +30,7 @@ services:
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-andreia}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_internal_pw}
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -47,7 +47,7 @@ services:
     build: .
     command: alembic upgrade head
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-andreia_db}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,8 +63,8 @@ services:
       # --- Infra (hosts fixos dentro da rede Docker) ---
       POSTGRES_HOST:  postgres
       RABBITMQ_HOST:  rabbitmq
-      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-andreia_db}"
-      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
+      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD:-rabbitmq_internal_pw}@rabbitmq:5672/"
       # --- App (configurar no EasyPanel UI) ---
       APP_ENV:
       DEBUG:
@@ -114,8 +114,8 @@ services:
       # --- Infra (hosts fixos dentro da rede Docker) ---
       POSTGRES_HOST:  postgres
       RABBITMQ_HOST:  rabbitmq
-      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-andreia_db}"
-      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
+      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD:-rabbitmq_internal_pw}@rabbitmq:5672/"
       # --- App (configurar no EasyPanel UI) ---
       APP_ENV:
       DEBUG:
