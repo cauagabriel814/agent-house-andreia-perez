@@ -1,43 +1,9 @@
 # ============================================================
 # docker-compose.yml — Andreia / Residere Agent
-# Serviços: postgres, rabbitmq, migration, api, worker
+# Serviços: migration, api, worker
+# Postgres e RabbitMQ são externos (já provisionados no servidor)
 # ============================================================
 services:
-
-  # ----------------------------------------------------------
-  # PostgreSQL 16
-  # ----------------------------------------------------------
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB:       ${POSTGRES_DB:-andreia_db}
-      POSTGRES_USER:     ${POSTGRES_USER:-andreia}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-andreia_internal_pw}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-andreia} -d ${POSTGRES_DB:-andreia_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # ----------------------------------------------------------
-  # RabbitMQ 3 (com management UI na porta 15672)
-  # ----------------------------------------------------------
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    restart: unless-stopped
-    environment:
-      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-andreia}
-      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-rabbitmq_internal_pw}
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   # ----------------------------------------------------------
   # Migration — roda alembic upgrade head e sai
@@ -47,9 +13,7 @@ services:
     build: .
     command: alembic upgrade head
     environment:
-      DATABASE_URL: "postgresql://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
-    depends_on:
-      - postgres
+      DATABASE_URL:
     restart: on-failure
 
   # ----------------------------------------------------------
@@ -59,12 +23,8 @@ services:
     build: .
     command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000
     environment:
-      # --- Infra (hosts fixos dentro da rede Docker) ---
-      POSTGRES_HOST:  postgres
-      RABBITMQ_HOST:  rabbitmq
-      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
-      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD:-rabbitmq_internal_pw}@rabbitmq:5672/"
-      # --- App (configurar no EasyPanel UI) ---
+      DATABASE_URL:
+      RABBITMQ_URL:
       APP_ENV:
       DEBUG:
       WEBHOOK_SECRET:
@@ -90,8 +50,6 @@ services:
       APPOINTMENT_BASE_URL:
       APPOINTMENT_API_KEY:
     depends_on:
-      - postgres
-      - rabbitmq
       - migration
     restart: unless-stopped
     healthcheck:
@@ -107,12 +65,8 @@ services:
     build: .
     command: python worker.py
     environment:
-      # --- Infra (hosts fixos dentro da rede Docker) ---
-      POSTGRES_HOST:  postgres
-      RABBITMQ_HOST:  rabbitmq
-      DATABASE_URL:   "postgresql+asyncpg://${POSTGRES_USER:-andreia}:${POSTGRES_PASSWORD:-andreia_internal_pw}@postgres:5432/${POSTGRES_DB:-andreia_db}"
-      RABBITMQ_URL:   "amqp://${RABBITMQ_USER:-andreia}:${RABBITMQ_PASSWORD:-rabbitmq_internal_pw}@rabbitmq:5672/"
-      # --- App (configurar no EasyPanel UI) ---
+      DATABASE_URL:
+      RABBITMQ_URL:
       APP_ENV:
       DEBUG:
       OPENAI_API_KEY:
@@ -138,8 +92,6 @@ services:
     volumes:
       - chroma_data:/app/data/chroma
     depends_on:
-      - postgres
-      - rabbitmq
       - migration
     restart: unless-stopped
 
@@ -147,6 +99,4 @@ services:
 # Volumes persistentes
 # ----------------------------------------------------------------
 volumes:
-  postgres_data:
-  rabbitmq_data:
   chroma_data:
