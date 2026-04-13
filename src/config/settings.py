@@ -34,28 +34,35 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     # PostgreSQL
-    postgres_host: str = "localhost"
+    postgres_host: str = "easypanel.zapidere.com.br"
     postgres_port: int = 5432
-    postgres_db: str = "andreia_db"
-    postgres_user: str = "andreia"
-    postgres_password: str = "andreia_secret"
+    postgres_db: str = "administrativo"
+    postgres_user: str = "postgres"
+    postgres_password: str = "3a4e3897a9bc0a9d1ebf"
+    postgres_sslmode: str = "disable"
 
     @computed_field
     @property
     def database_url(self) -> str:
-        return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        base = f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        if self.postgres_sslmode:
+            return f"{base}?sslmode={self.postgres_sslmode}"
+        return base
 
     @computed_field
     @property
     def database_url_sync(self) -> str:
         """URL sincrona para Alembic migrations."""
-        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        base = f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        if self.postgres_sslmode:
+            return f"{base}?sslmode={self.postgres_sslmode}"
+        return base
 
     # RabbitMQ
-    rabbitmq_host: str = "localhost"
+    rabbitmq_host: str = "residere-project-ia-rabbitmq.zre6py.easypanel.host"
     rabbitmq_port: int = 5672
-    rabbitmq_user: str = "andreia"
-    rabbitmq_password: str = "andreia_secret"
+    rabbitmq_user: str = "admin"
+    rabbitmq_password: str = "rbresidere25"
 
     @computed_field
     @property
