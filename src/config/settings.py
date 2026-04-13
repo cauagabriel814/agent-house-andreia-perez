@@ -39,20 +39,28 @@ class Settings(BaseSettings):
     postgres_db: str = "andreia_db"
     postgres_user: str = "andreia"
     postgres_password: str = "andreia_secret"
-    database_url: str = "postgresql+asyncpg://andreia:andreia_secret@localhost:5432/andreia_db"
+
+    @computed_field
+    @property
+    def database_url(self) -> str:
+        return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     @computed_field
     @property
     def database_url_sync(self) -> str:
         """URL sincrona para Alembic migrations."""
-        return self.database_url.replace("+asyncpg", "")
+        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
 
     # RabbitMQ
     rabbitmq_host: str = "localhost"
     rabbitmq_port: int = 5672
     rabbitmq_user: str = "andreia"
     rabbitmq_password: str = "andreia_secret"
-    rabbitmq_url: str = "amqp://andreia:andreia_secret@localhost:5672/"
+
+    @computed_field
+    @property
+    def rabbitmq_url(self) -> str:
+        return f"amqp://{self.rabbitmq_user}:{self.rabbitmq_password}@{self.rabbitmq_host}:{self.rabbitmq_port}/"
 
     # UAZAPI (WhatsApp)
     uazapi_base_url: str = ""
