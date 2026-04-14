@@ -386,12 +386,8 @@ async def get_dashboard_metrics():
             "apresentacao_agendada",
         ]
 
-        leads_em_fluxo = await session.scalar(
-            select(func.count(func.distinct(Conversation.lead_id))).where(
-                Conversation.current_node.in_(
-                    ["buyer", "sale", "launch", "investor", "rental", "exchange"]
-                )
-            )
+        leads_com_conversa = await session.scalar(
+            select(func.count(func.distinct(Conversation.lead_id)))
         )
 
         leads_com_agendamento = await session.scalar(
@@ -401,14 +397,14 @@ async def get_dashboard_metrics():
             )
         )
 
-        leads_em_fluxo = leads_em_fluxo or 0
+        leads_com_conversa = leads_com_conversa or 0
         leads_com_agendamento = leads_com_agendamento or 0
         taxa_agendamento_efetivado = {
-            "leads_em_fluxo": leads_em_fluxo,
+            "total_leads": leads_com_conversa,
             "agendamentos_efetivados": leads_com_agendamento,
             "taxa_agendamento_pct": (
-                round(leads_com_agendamento / leads_em_fluxo * 100, 1)
-                if leads_em_fluxo
+                round(leads_com_agendamento / leads_com_conversa * 100, 1)
+                if leads_com_conversa
                 else None
             ),
         }
@@ -587,4 +583,327 @@ async def get_dashboard_metrics():
             "top_motivos_objecao": top_motivos_objecao,
             "ticket_medio_por_classificacao": ticket_medio_por_classificacao,
             "roi_por_canal_origem": roi_por_canal_origem,
+        }
+
+
+# ===========================================================================
+# ROTAS DEDICADAS — uma métrica, dados completos de quem são os leads
+# ===========================================================================
+
+
+@router.get("/taxa-conversao")
+async def get_taxa_conversao():
+    """
+    Todos os leads com flag de conversão.
+
+    Convertido = agendou visita/apresentacao OU chegou ao node 'completed'.
+    Retorna: total, convertidos, taxa_pct e lista de todos os leads.
+    """
+    async with async_session() as session:
+        _visita_tags = ["visita_agendada", "visita_tecnica_solicitada", "apresentacao_agendada"]
+
+        # Lead IDs convertidos via tag de agendamento
+        converted_tag_rows = (
+            await session.execute(
+                select(func.distinct(LeadTag.lead_id)).where(
+                    LeadTag.tag_name.in_(_visita_tags),
+                    LeadTag.tag_value == "true",
+                )
+            )
+        ).scalars().all()
+        converted_ids = {str(lid) for lid in converted_tag_rows}
+
+        # Todos os leads com sua conversa mais recente
+        leads_rows = (
+            await session.execute(
+                text("""
+                    SELECT
+                        l.id        AS lead_id,
+                        l.name      AS nome,
+                        l.phone     AS telefone,
+                        l.classification AS classificacao,
+                        c.current_node   AS etapa_atual,
+                        c.status         AS status_conversa
+                    FROM leads l
+                    LEFT JOIN LATERAL (
+                        SELECT current_node, status
+                        FROM conversations
+                        WHERE lead_id = l.id
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                    ) c ON true
+                    ORDER BY l.created_at DESC
+                """)
+            )
+        ).all()
+
+        leads = []
+        for row in leads_rows:
+            lid = str(row.lead_id)
+            convertido = lid in converted_ids or row.etapa_atual == "completed"
+            leads.append({
+                "lead_id": lid,
+                "nome": row.nome,
+                "telefone": row.telefone,
+                "classificacao": row.classificacao,
+                "etapa_atual": row.etapa_atual,
+                "convertido": convertido,
+            })
+
+        total = len(leads)
+        convertidos = sum(1 for l in leads if l["convertido"])
+        return {
+            "total": total,
+            "convertidos": convertidos,
+            "taxa_pct": round(convertidos / total * 100, 1) if total else None,
+            "leads": leads,
+        }
+
+
+@router.get("/tempo-qualificacao")
+async def get_tempo_qualificacao():
+    """
+    Leads qualificados com tempo da primeira mensagem até o scoring.
+
+    Retorna: media_minutos, total e lista de leads com duração individual.
+    """
+    async with async_session() as session:
+        rows = (
+            await session.execute(
+                text("""
+                    SELECT
+                        l.id   AS lead_id,
+                        l.name AS nome,
+                        l.phone AS telefone,
+                        MIN(c.created_at) AS inicio_conversa,
+                        MIN(ls.created_at) AS qualificado_em,
+                        EXTRACT(EPOCH FROM (MIN(ls.created_at) - MIN(c.created_at))) / 60
+                            AS duracao_minutos
+                    FROM leads l
+                    JOIN conversations c  ON c.lead_id  = l.id
+                    JOIN lead_scores   ls ON ls.lead_id = l.id
+                    GROUP BY l.id, l.name, l.phone
+                    HAVING MIN(ls.created_at) > MIN(c.created_at)
+                    ORDER BY duracao_minutos ASC
+                """)
+            )
+        ).all()
+
+        leads = [
+            {
+                "lead_id": str(row.lead_id),
+                "nome": row.nome,
+                "telefone": row.telefone,
+                "inicio_conversa": row.inicio_conversa.isoformat() if row.inicio_conversa else None,
+                "qualificado_em": row.qualificado_em.isoformat() if row.qualificado_em else None,
+                "duracao_minutos": round(float(row.duracao_minutos), 1) if row.duracao_minutos else None,
+            }
+            for row in rows
+        ]
+
+        durações = [l["duracao_minutos"] for l in leads if l["duracao_minutos"] is not None]
+        media = round(sum(durações) / len(durações), 1) if durações else None
+
+        return {
+            "total": len(leads),
+            "media_minutos": media,
+            "leads": leads,
+        }
+
+
+@router.get("/agendamento-efetivado")
+async def get_agendamento_efetivado():
+    """
+    Leads que agendaram visita ou apresentação.
+
+    Retorna: total e lista com nome, telefone, tipo de agendamento e data (se disponível).
+    """
+    async with async_session() as session:
+        # Leads com tag de agendamento confirmado
+        agend_rows = (
+            await session.execute(
+                text("""
+                    SELECT
+                        l.id    AS lead_id,
+                        l.name  AS nome,
+                        l.phone AS telefone,
+                        lt.tag_name  AS tipo_agendamento,
+                        lt.created_at AS agendado_em
+                    FROM leads l
+                    JOIN lead_tags lt ON lt.lead_id = l.id
+                    WHERE lt.tag_name IN (
+                        'visita_agendada', 'visita_tecnica_solicitada', 'apresentacao_agendada'
+                    )
+                    AND lt.tag_value = 'true'
+                    ORDER BY lt.created_at DESC
+                """)
+            )
+        ).all()
+
+        # Tags de data para cruzar
+        date_rows = (
+            await session.execute(
+                select(LeadTag.lead_id, LeadTag.tag_name, LeadTag.tag_value).where(
+                    LeadTag.tag_name.in_(["data_visita", "data_apresentacao"])
+                )
+            )
+        ).all()
+        datas_por_lead = {str(r.lead_id): r.tag_value for r in date_rows}
+
+        leads = [
+            {
+                "lead_id": str(row.lead_id),
+                "nome": row.nome,
+                "telefone": row.telefone,
+                "tipo_agendamento": row.tipo_agendamento,
+                "data_agendamento": datas_por_lead.get(str(row.lead_id)),
+                "agendado_em": row.agendado_em.isoformat() if row.agendado_em else None,
+            }
+            for row in agend_rows
+        ]
+
+        return {
+            "total": len(leads),
+            "leads": leads,
+        }
+
+
+@router.get("/reengajamento")
+async def get_reengajamento():
+    """
+    Jobs de reengajamento pendentes (ainda não executados, scheduled_for no futuro).
+
+    Mostra quem são os leads e quanto tempo falta para entrar em contato.
+    Não inclui leads com conversa encerrada (completed).
+    """
+    async with async_session() as session:
+        _reeng_types = (
+            "reengagement_24h", "reengagement_7d",
+            "nurture_30d", "nurture_60d", "nurture_90d",
+            "follow_up_48h", "follow_up_24h",
+        )
+
+        rows = (
+            await session.execute(
+                text("""
+                    SELECT
+                        sj.id           AS job_id,
+                        l.id            AS lead_id,
+                        l.name          AS nome,
+                        l.phone         AS telefone,
+                        sj.job_type,
+                        sj.scheduled_for,
+                        EXTRACT(EPOCH FROM (sj.scheduled_for - NOW())) / 3600
+                            AS horas_restantes
+                    FROM scheduled_jobs sj
+                    JOIN leads l ON l.id = sj.lead_id
+                    WHERE sj.status = 'pending'
+                      AND sj.scheduled_for > NOW()
+                      AND sj.job_type IN :tipos
+                      AND NOT EXISTS (
+                          SELECT 1 FROM conversations c
+                          WHERE c.lead_id = sj.lead_id
+                            AND c.current_node = 'completed'
+                      )
+                    ORDER BY sj.scheduled_for ASC
+                """),
+                {"tipos": _reeng_types},
+            )
+        ).all()
+
+        leads = [
+            {
+                "job_id": str(row.job_id),
+                "lead_id": str(row.lead_id),
+                "nome": row.nome,
+                "telefone": row.telefone,
+                "job_type": row.job_type,
+                "agendado_para": row.scheduled_for.isoformat() if row.scheduled_for else None,
+                "horas_restantes": round(float(row.horas_restantes), 1) if row.horas_restantes else None,
+            }
+            for row in rows
+        ]
+
+        return {
+            "total_pendentes": len(leads),
+            "leads": leads,
+        }
+
+
+@router.get("/ticket-medio")
+async def get_ticket_medio():
+    """
+    Leads com preferência de imóvel (faixa_valor), localização e situação.
+
+    Retorna: média geral, média por classificação e lista de leads com detalhes.
+    """
+    async with async_session() as session:
+        rows = (
+            await session.execute(
+                text("""
+                    SELECT
+                        l.id             AS lead_id,
+                        l.name           AS nome,
+                        l.phone          AS telefone,
+                        l.classification AS classificacao,
+                        MAX(CASE WHEN lt.tag_name = 'faixa_valor'    THEN lt.tag_value END) AS faixa_valor,
+                        MAX(CASE WHEN lt.tag_name = 'localizacao'    THEN lt.tag_value END) AS localizacao,
+                        MAX(CASE WHEN lt.tag_name = 'situacao_imovel' THEN lt.tag_value END) AS situacao_imovel,
+                        -- extrai valor numérico estimado
+                        AVG(
+                            CASE
+                                WHEN lower(lt.tag_value) ~ 'milh'
+                                    THEN (regexp_match(lt.tag_value, '[0-9]+'))[1]::numeric * 1000000
+                                WHEN lower(lt.tag_value) ~ '[0-9]+\\s*k'
+                                    THEN (regexp_match(lt.tag_value, '[0-9]+'))[1]::numeric * 1000
+                                WHEN lower(lt.tag_value) ~ '[0-9]+\\s*mil'
+                                    THEN (regexp_match(lt.tag_value, '[0-9]+'))[1]::numeric * 1000
+                                WHEN lt.tag_value ~ '^[0-9.]+$'
+                                    THEN replace(lt.tag_value, '.', '')::numeric
+                                ELSE NULL
+                            END
+                        ) FILTER (WHERE lt.tag_name = 'faixa_valor') AS ticket_estimado
+                    FROM leads l
+                    JOIN lead_tags lt ON lt.lead_id = l.id
+                    WHERE EXISTS (
+                        SELECT 1 FROM lead_tags lt2
+                        WHERE lt2.lead_id = l.id AND lt2.tag_name = 'faixa_valor'
+                    )
+                    GROUP BY l.id, l.name, l.phone, l.classification
+                    ORDER BY ticket_estimado DESC NULLS LAST
+                """)
+            )
+        ).all()
+
+        leads = []
+        tickets_por_class: dict[str, list[float]] = {}
+
+        for row in rows:
+            ticket = int(row.ticket_estimado) if row.ticket_estimado else None
+            leads.append({
+                "lead_id": str(row.lead_id),
+                "nome": row.nome,
+                "telefone": row.telefone,
+                "classificacao": row.classificacao,
+                "faixa_valor": row.faixa_valor,
+                "ticket_estimado": ticket,
+                "localizacao": row.localizacao,
+                "situacao_imovel": row.situacao_imovel,
+            })
+            if ticket and row.classificacao:
+                tickets_por_class.setdefault(row.classificacao, []).append(ticket)
+
+        todos_tickets = [l["ticket_estimado"] for l in leads if l["ticket_estimado"]]
+        media_geral = int(sum(todos_tickets) / len(todos_tickets)) if todos_tickets else None
+
+        por_classificacao = {
+            cls: {"media": int(sum(vals) / len(vals)), "total_leads": len(vals)}
+            for cls, vals in tickets_por_class.items()
+        }
+
+        return {
+            "total_leads": len(leads),
+            "media_geral": media_geral,
+            "por_classificacao": por_classificacao,
+            "leads": leads,
         }
