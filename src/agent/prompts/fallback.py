@@ -33,10 +33,32 @@ _FAQ_RE = re.compile(
     r"(casa andreia|andreia perez|residere|a imobili[aá]ria|"
     r"endere[cç]o|onde fica[ms]?|onde voc[eê]s (ficam|est[aã]o)|"
     r"\bcnpj\b|\bcreci\b|credenciado|"
-    r"como funciona (o |a )?(financiamento|processo|cadastro|compra|venda)|"
+    r"como funciona (o |a )?(financiamento|processo|cadastro|compra|venda|avalia[çc][aã]o)|"
     r"quais? (s[aã]o os? )?documentos|"
     r"o que [eé] (a |o )?(imobili[aá]ria|residere|andreia|casa andreia)|"
-    r"voc[eê]s? (s[aã]o|[eé]) (uma? )?imobili[aá]ria)",
+    r"voc[eê]s? (s[aã]o|[eé]) (uma? )?imobili[aá]ria|"
+    # Horário e atendimento
+    r"hor[aá]rio (de )?(atendimento|funcionamento|trabalho)|"
+    r"que horas (voc[eê]s )?abr[em]|que horas (voc[eê]s )?fech[am]|"
+    r"quando voc[eê]s atendem|atendem (no )?(s[aá]bado|domingo|fim de semana|feriado)|"
+    r"voc[eê]s atendem aos (s[aá]bados|domingos)|"
+    # Contato e canais
+    r"\btelefone\b|\bwhatsapp\b|\bsite\b|\binstagram\b|\bfacebook\b|\bemail\b|"
+    r"como (eu )?entro em contato|como falo com voc[eê]s|"
+    # Equipe e atendimento humano
+    r"falar com (um |o |a )?corretor|falar com algu[eé]m|"
+    r"atendimento humano|falar com uma? pessoa|"
+    r"tem algu[eé]m (para|pra) (me )?(atender|ajudar)|"
+    # Financeiro / comissão
+    r"comiss[aã]o|taxa de corretagem|taxa de administra[çc][aã]o|"
+    r"quanto (voc[eê]s )?cobram|qual [eé] o (valor|pre[çc]o) (da|do) (taxa|comiss[aã]o)|"
+    # Processo e prazo
+    r"quanto tempo (leva|demora)|prazo (de|para) (avalia[çc][aã]o|venda|loca[çc][aã]o|processo)|"
+    r"o que (eu )?preciso (para|trazer|levar)|quais (s[aã]o os )?requisitos|"
+    # Disponibilidade de imóveis
+    r"voc[eê]s? (t[eê]m|tem|possu[ií]) im[oó]ve[il]s?|"
+    r"t[eê]m (im[oó]veis?|ap[aê]s?|casas?|terrenos?) (disponíveis?|para (venda|aluguel|loca[çc][aã]o))"
+    r")",
     re.IGNORECASE,
 )
 

@@ -56,6 +56,7 @@ async def handle_incoming_message(payload: dict):
     content = payload.get("content")
     media_url = payload.get("media_url")
     mimetype = payload.get("media_mimetype")
+    media_base64 = payload.get("media_base64")
     raw_payload = payload.get("raw_payload", {})
     utm_source = payload.get("utm_source")
 
@@ -89,6 +90,7 @@ async def handle_incoming_message(payload: dict):
             media_url=media_url,
             mimetype=mimetype,
             content=structured_content,
+            media_base64=media_base64,
         )
 
         logger.info(

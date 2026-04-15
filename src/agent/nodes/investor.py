@@ -602,8 +602,9 @@ async def _investor_node_impl(state: AgentState) -> dict:
 
     # -----------------------------------------------------------------------
     # Etapa 1: Primeira chamada (vinda do router)
+    # Nota: se last_question já tem prefixo "investor_", é retorno de FAQ — não reinicia.
     # -----------------------------------------------------------------------
-    if current_node != "investor":
+    if current_node != "investor" and not (last_question and last_question.startswith("investor_")):
         logger.info("INVESTOR | Iniciando fluxo de investidor | phone=%s", phone)
         await send_whatsapp_message(phone, INVESTOR_INITIAL)
         return {

@@ -200,8 +200,9 @@ async def _sale_node_impl(state: AgentState) -> dict:
 
     # ------------------------------------------------------------------
     # Etapa 1: Primeira chamada (vinda do router ou do generic)
+    # Nota: se last_question já tem prefixo "sale_", é retorno de FAQ — não reinicia.
     # ------------------------------------------------------------------
-    if current_node != "sale":
+    if current_node != "sale" and not (last_question and last_question.startswith("sale_")):
         logger.info("SALE | Iniciando fluxo de venda | phone=%s", phone)
 
         # Extrai regiao da mensagem que ativou o fluxo

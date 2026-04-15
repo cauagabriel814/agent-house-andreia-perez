@@ -101,6 +101,7 @@ async def _faq_node_impl(state: AgentState) -> dict:
         "current_node": "faq",
         # last_question preservado (não incluído no dict) para retorno ao fluxo
         "awaiting_response": has_active_flow,
+        "reask_count": 0,  # Resetar: não penalizar o lead por ter feito uma pergunta FAQ
         "messages": [AIMessage(content=answer)],
     }
 

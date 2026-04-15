@@ -16,36 +16,39 @@ async def process_media(
     media_url: str | None = None,
     mimetype: str | None = None,
     content: dict | None = None,
+    media_base64: str | None = None,
 ) -> str:
     """
     Roteia o processamento de midia para o handler correto.
 
     Args:
-        media_type: Tipo da midia (audio, image, document, spreadsheet,
-                    sticker, location, contact)
-        media_url:  URL do arquivo de midia (necessario para file types)
-        mimetype:   MIME type do arquivo (ex: audio/ogg, image/jpeg)
-        content:    Dados estruturados para location/contact (do raw_payload)
+        media_type:   Tipo da midia (audio, image, document, spreadsheet,
+                      sticker, location, contact)
+        media_url:    URL do arquivo de midia (fallback se base64 nao disponivel)
+        mimetype:     MIME type do arquivo (ex: audio/ogg, image/jpeg)
+        content:      Dados estruturados para location/contact (do raw_payload)
+        media_base64: Conteudo da midia em base64 (enviado pela UAZAPI no webhook)
 
     Returns:
         String com o conteudo processado/descrito, pronto para o agente.
     """
     logger.info(
-        "MEDIA | Iniciando processamento | type=%s | mimetype=%s | has_url=%s",
+        "MEDIA | Iniciando processamento | type=%s | mimetype=%s | has_base64=%s | has_url=%s",
         media_type,
         mimetype,
+        bool(media_base64),
         bool(media_url),
     )
 
     try:
         if media_type == "audio":
-            result = await process_audio(media_url, mimetype)
+            result = await process_audio(media_url, mimetype, media_base64=media_base64)
 
         elif media_type == "image":
-            result = await process_image(media_url, mimetype)
+            result = await process_image(media_url, mimetype, media_base64=media_base64)
 
         elif media_type == "document":
-            result = await process_document(media_url, mimetype)
+            result = await process_document(media_url, mimetype, media_base64=media_base64)
 
         elif media_type == "spreadsheet":
             result = await process_spreadsheet(media_url, mimetype)

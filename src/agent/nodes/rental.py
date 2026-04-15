@@ -182,8 +182,9 @@ async def _rental_node_impl(state: AgentState) -> dict:
 
     # ------------------------------------------------------------------
     # Etapa 1: Primeira chamada (vinda do router)
+    # Nota: se last_question já tem prefixo "rental_", é retorno de FAQ — não reinicia.
     # ------------------------------------------------------------------
-    if current_node != "rental":
+    if current_node != "rental" and not (last_question and last_question.startswith("rental_")):
         logger.info("RENTAL | Iniciando fluxo de locacao | phone=%s", phone)
 
         # Extrai tipo e regiao já da mensagem que ativou o fluxo

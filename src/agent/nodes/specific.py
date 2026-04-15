@@ -232,8 +232,9 @@ async def _specific_node_impl(state: AgentState) -> dict:
 
     # -----------------------------------------------------------------------
     # Etapa 1: Primeira chamada (vinda do router)
+    # Nota: se last_question já tem prefixo "specific_", é retorno de FAQ — não reinicia.
     # -----------------------------------------------------------------------
-    if current_node != "specific":
+    if current_node != "specific" and not (last_question and last_question.startswith("specific_")):
         logger.info(
             "SPECIFIC | Iniciando fluxo de interesse especifico | phone=%s", phone
         )
