@@ -41,7 +41,7 @@ def _extract_phone(chatid: str) -> str:
     return chatid.replace("@s.whatsapp.net", "").replace("@g.us", "")
 
 
-def _map_uazapi_message(msg: dict) -> tuple[str, str | None, str | None, str | None, str | None]:
+def _map_uazapi_message(msg: dict) -> tuple[str, str | None, str | None, str | None, str | None, str | None]:
     """
     Mapeia o objeto 'message' da UAZAPI para o formato interno.
 
@@ -49,27 +49,50 @@ def _map_uazapi_message(msg: dict) -> tuple[str, str | None, str | None, str | N
       - messageType: "Conversation", "ExtendedText", "Audio", "PTT", "Image", "Document", ...
       - text / content: conteudo textual
       - mediaType: mimetype da midia (se houver)
-      - base64: conteudo da midia codificado em base64 (presente em audio, image, document)
+      - base64: conteudo da midia codificado em base64 (se disponivel)
+      - url / mediaUrl: URL da midia (se disponivel)
+      - messageId / id: ID da mensagem para download via API
 
-    Retorna: (tipo_interno, conteudo, media_url, media_mimetype, media_base64)
+    Retorna: (tipo_interno, conteudo, media_url, media_mimetype, media_base64, uazapi_message_id)
     """
     if not msg:
-        return "text", None, None, None, None
+        return "text", None, None, None, None, None
 
     raw_type = (msg.get("messageType") or "").lower()
     msg_type = _UAZAPI_TYPE_MAP.get(raw_type, "text")
 
-    # Conteudo textual: UAZAPI usa 'text' como campo principal
+    # Conteudo textual
     content = msg.get("text") or msg.get("content") or msg.get("caption") or None
 
-    # Media: UAZAPI coloca o mimetype em 'mediaType'
+    # Mimetype
     media_mimetype = msg.get("mediaType") or msg.get("mimetype") or None
-    media_url = None  # UAZAPI nao envia URL direta no webhook
 
-    # Base64: UAZAPI envia o conteudo da midia como base64 no corpo do webhook
+    # URL da midia (alguns setups UAZAPI enviam URL direta)
+    media_url = msg.get("url") or msg.get("mediaUrl") or msg.get("fileUrl") or None
+
+    # Base64 inline (depende da configuracao da instancia UAZAPI)
     media_base64 = msg.get("base64") or msg.get("mediaData") or msg.get("data") or None
 
-    return msg_type, content, media_url, media_mimetype, media_base64
+    # ID da mensagem para download via API UAZAPI como fallback
+    uazapi_message_id = (
+        msg.get("messageId")
+        or msg.get("id")
+        or msg.get("key", {}).get("id")
+        or None
+    )
+
+    # Log de diagnostico para mensagens de midia (facilita debug de novos payloads)
+    if msg_type in ("audio", "image", "document"):
+        logger.info(
+            "WEBHOOK | Midia recebida | type=%s | keys=%s | has_base64=%s | has_url=%s | msg_id=%s",
+            msg_type,
+            list(msg.keys()),
+            bool(media_base64),
+            bool(media_url),
+            uazapi_message_id,
+        )
+
+    return msg_type, content, media_url, media_mimetype, media_base64, uazapi_message_id
 
 
 @router.post("/webhook")
@@ -120,7 +143,7 @@ async def receive_webhook(
         return {"status": "ok", "ignored": "group_message"}
 
     # Mapear tipo e conteudo
-    msg_type, content, media_url, media_mimetype, media_base64 = _map_uazapi_message(msg)
+    msg_type, content, media_url, media_mimetype, media_base64, uazapi_message_id = _map_uazapi_message(msg)
 
     # Nome do remetente
     push_name = msg.get("senderName") or payload.get("chat", {}).get("name", "")
@@ -135,12 +158,14 @@ async def receive_webhook(
     normalized = {
         "message_id": str(uuid.uuid4()),
         "phone": phone,
+        "chat_id": chatid,  # necessario para download de midia via API UAZAPI
         "push_name": push_name,
         "type": msg_type,
         "content": content,
         "media_url": media_url,
         "media_mimetype": media_mimetype,
         "media_base64": media_base64,
+        "uazapi_message_id": uazapi_message_id,
         "raw_payload": payload,
         "timestamp": timestamp,
     }

@@ -1,3 +1,5 @@
+import base64
+
 import httpx
 
 from src.config.settings import settings
@@ -55,17 +57,77 @@ class UazapiService:
                 raise
 
     async def download_media(self, media_url: str) -> bytes:
-        """Faz download de midia do WhatsApp."""
-        async with httpx.AsyncClient() as client:
+        """Faz download de midia via URL direta."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.get(media_url, headers=self._headers())
                 response.raise_for_status()
-                logger.info("UAZAPI | Media baixada | url=%s | bytes=%d", media_url[:80], len(response.content))
+                logger.info("UAZAPI | Media baixada via URL | url=%s | bytes=%d", media_url[:80], len(response.content))
                 return response.content
             except httpx.HTTPStatusError as exc:
                 logger.error(
-                    "UAZAPI | Falha ao baixar media | url=%s | status=%d",
+                    "UAZAPI | Falha ao baixar media via URL | url=%s | status=%d",
                     media_url[:80],
                     exc.response.status_code,
                 )
                 raise
+
+    async def download_media_by_id(
+        self, message_id: str, chat_id: str = ""
+    ) -> tuple[bytes | None, str | None]:
+        """
+        Baixa midia via API UAZAPI usando o messageId.
+
+        Endpoint: POST {base_url}/download/base64
+        Body: {"messageId": "...", "chatId": "..."}
+        Retorna: (bytes_da_midia, mimetype) ou (None, None) se falhar.
+        """
+        if not self._is_configured():
+            logger.warning("UAZAPI | download_media_by_id: instancia nao configurada")
+            return None, None
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.base_url}/download/base64",
+                    headers=self._headers(),
+                    json={"messageId": message_id, "chatId": chat_id},
+                )
+                response.raise_for_status()
+                data = response.json()
+
+                b64 = data.get("base64") or data.get("data")
+                mimetype = data.get("mimetype") or data.get("mediaType")
+
+                if b64:
+                    media_bytes = base64.b64decode(b64)
+                    logger.info(
+                        "UAZAPI | Media baixada via ID | messageId=%s | bytes=%d | mimetype=%s",
+                        message_id,
+                        len(media_bytes),
+                        mimetype,
+                    )
+                    return media_bytes, mimetype
+
+                logger.warning(
+                    "UAZAPI | download_media_by_id: resposta sem base64 | messageId=%s | keys=%s",
+                    message_id,
+                    list(data.keys()),
+                )
+                return None, None
+
+            except httpx.HTTPStatusError as exc:
+                logger.error(
+                    "UAZAPI | Falha no download_media_by_id | messageId=%s | status=%d | body=%s",
+                    message_id,
+                    exc.response.status_code,
+                    exc.response.text[:200],
+                )
+                return None, None
+            except Exception as exc:
+                logger.error(
+                    "UAZAPI | Erro inesperado no download_media_by_id | messageId=%s | erro=%s",
+                    message_id,
+                    exc,
+                )
+                return None, None
