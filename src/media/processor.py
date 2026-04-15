@@ -17,38 +17,62 @@ async def process_media(
     mimetype: str | None = None,
     content: dict | None = None,
     media_base64: str | None = None,
+    uazapi_message_id: str | None = None,
+    chat_id: str = "",
 ) -> str:
     """
     Roteia o processamento de midia para o handler correto.
 
+    Ordem de tentativa para obter bytes da midia:
+      1. base64 inline do webhook (campo 'base64')
+      2. URL direta (campo 'url' / 'mediaUrl')
+      3. Download via API UAZAPI usando messageId (POST /download/base64)
+
     Args:
-        media_type:   Tipo da midia (audio, image, document, spreadsheet,
-                      sticker, location, contact)
-        media_url:    URL do arquivo de midia (fallback se base64 nao disponivel)
-        mimetype:     MIME type do arquivo (ex: audio/ogg, image/jpeg)
-        content:      Dados estruturados para location/contact (do raw_payload)
-        media_base64: Conteudo da midia em base64 (enviado pela UAZAPI no webhook)
+        media_type:         Tipo da midia (audio, image, document, ...)
+        media_url:          URL direta da midia (se disponivel no webhook)
+        mimetype:           MIME type do arquivo
+        content:            Dados estruturados para location/contact
+        media_base64:       Base64 inline do webhook
+        uazapi_message_id:  ID da mensagem no UAZAPI para download via API
+        chat_id:            chatId do WhatsApp (necessario para o download)
 
     Returns:
         String com o conteudo processado/descrito, pronto para o agente.
     """
     logger.info(
-        "MEDIA | Iniciando processamento | type=%s | mimetype=%s | has_base64=%s | has_url=%s",
+        "MEDIA | Iniciando processamento | type=%s | mimetype=%s | has_base64=%s | has_url=%s | has_msg_id=%s",
         media_type,
         mimetype,
         bool(media_base64),
         bool(media_url),
+        bool(uazapi_message_id),
     )
 
     try:
         if media_type == "audio":
-            result = await process_audio(media_url, mimetype, media_base64=media_base64)
+            result = await process_audio(
+                media_url, mimetype,
+                media_base64=media_base64,
+                uazapi_message_id=uazapi_message_id,
+                chat_id=chat_id,
+            )
 
         elif media_type == "image":
-            result = await process_image(media_url, mimetype, media_base64=media_base64)
+            result = await process_image(
+                media_url, mimetype,
+                media_base64=media_base64,
+                uazapi_message_id=uazapi_message_id,
+                chat_id=chat_id,
+            )
 
         elif media_type == "document":
-            result = await process_document(media_url, mimetype, media_base64=media_base64)
+            result = await process_document(
+                media_url, mimetype,
+                media_base64=media_base64,
+                uazapi_message_id=uazapi_message_id,
+                chat_id=chat_id,
+            )
 
         elif media_type == "spreadsheet":
             result = await process_spreadsheet(media_url, mimetype)

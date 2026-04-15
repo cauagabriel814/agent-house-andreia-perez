@@ -11,23 +11,33 @@ async def process_document(
     media_url: str | None,
     mimetype: str | None = None,
     media_base64: str | None = None,
+    uazapi_message_id: str | None = None,
+    chat_id: str = "",
 ) -> str:
     """
     Extrai texto de documentos PDF ou DOCX recebidos via WhatsApp.
 
+    Ordem de tentativa para obter os bytes:
+      1. base64 inline do webhook
+      2. Download via URL direta
+      3. Download via API UAZAPI (POST /download/base64) usando messageId
+
     Pipeline:
-        1. Obtem os bytes do documento via base64 (UAZAPI envia no webhook) ou download
+        1. Obtem os bytes do documento
         2. Deteccao do tipo (PDF ou DOCX) pelo mimetype
         3. Extracao do texto com PyPDF2 (PDF) ou python-docx (DOCX)
         4. Retorna o texto extraido (limitado a _MAX_CHARS caracteres)
     """
-    doc_bytes = await _get_document_bytes(media_url, media_base64)
+    doc_bytes, resolved_mime = await _get_document_bytes(
+        media_base64, media_url, uazapi_message_id, chat_id, mimetype
+    )
     if not doc_bytes:
         return "[Documento recebido mas nao foi possivel obter o conteudo]"
 
     logger.info("DOCUMENT | Bytes obtidos | bytes=%d", len(doc_bytes))
 
-    mime = (mimetype or "").lower()
+    effective_mime = resolved_mime or mimetype or ""
+    mime = effective_mime.lower()
     url_lower = (media_url or "").lower()
 
     if "pdf" in mime or url_lower.endswith(".pdf"):
@@ -51,25 +61,50 @@ async def process_document(
     return text
 
 
-async def _get_document_bytes(media_url: str | None, media_base64: str | None) -> bytes | None:
-    """Obtem os bytes do documento: decodifica base64 ou faz download via URL."""
+async def _get_document_bytes(
+    media_base64: str | None,
+    media_url: str | None,
+    uazapi_message_id: str | None,
+    chat_id: str,
+    mimetype: str | None,
+) -> tuple[bytes | None, str | None]:
+    """Tenta obter bytes do documento nas tres fontes disponiveis."""
+
+    # 1. Base64 inline no webhook
     if media_base64:
         try:
-            logger.info("DOCUMENT | Decodificando base64 do webhook")
-            return base64.b64decode(media_base64)
+            logger.info("DOCUMENT | Decodificando base64 inline do webhook")
+            return base64.b64decode(media_base64), mimetype
         except Exception as exc:
-            logger.warning("DOCUMENT | Falha ao decodificar base64 | erro=%s", exc)
+            logger.warning("DOCUMENT | base64 invalido | erro=%s", exc)
 
+    # 2. URL direta
     if media_url:
         try:
-            logger.info("DOCUMENT | Fazendo download via URL | url=%s", media_url[:80])
+            logger.info("DOCUMENT | Baixando via URL direta | url=%s", media_url[:80])
             uazapi = UazapiService()
-            return await uazapi.download_media(media_url)
+            data = await uazapi.download_media(media_url)
+            if data:
+                return data, mimetype
         except Exception as exc:
-            logger.warning("DOCUMENT | Falha no download | erro=%s", exc)
+            logger.warning("DOCUMENT | Falha no download por URL | erro=%s", exc)
 
-    logger.warning("DOCUMENT | Nenhuma fonte de dados disponivel (sem base64 e sem URL)")
-    return None
+    # 3. API UAZAPI via messageId
+    if uazapi_message_id:
+        try:
+            logger.info("DOCUMENT | Baixando via API UAZAPI | messageId=%s", uazapi_message_id)
+            uazapi = UazapiService()
+            data, resolved_mime = await uazapi.download_media_by_id(uazapi_message_id, chat_id)
+            if data:
+                return data, resolved_mime or mimetype
+        except Exception as exc:
+            logger.warning("DOCUMENT | Falha no download via API | erro=%s", exc)
+
+    logger.warning(
+        "DOCUMENT | Todas as fontes falharam | has_base64=%s | has_url=%s | has_msg_id=%s",
+        bool(media_base64), bool(media_url), bool(uazapi_message_id),
+    )
+    return None, None
 
 
 def _extract_pdf(data: bytes) -> str:
