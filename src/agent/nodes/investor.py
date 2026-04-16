@@ -451,7 +451,7 @@ def _is_abaixo_400k(investimento_categoria: str, faixa_valor: str = "") -> bool:
     return any(ch.isdigit() for ch in raw)
 
 
-async def _notify_corretor_morno(phone: str, tags: dict, total_score: int) -> None:
+async def _notify_corretor_morno(phone: str, tags: dict, total_score: int, kommo_lead_id=None) -> None:
     """Envia email ao corretor quando lead MORNO entra em follow-up programado (SLA 24h)."""
     from datetime import datetime, timezone, timedelta
     cuiaba_tz = timezone(timedelta(hours=-4))
@@ -472,6 +472,21 @@ async def _notify_corretor_morno(phone: str, tags: dict, total_score: int) -> No
         phone,
     )
 
+    if kommo_lead_id:
+        nota = (
+            f"⚠️ LEAD MORNO - FOLLOW-UP\n"
+            f"Score: {total_score} pontos\n"
+            f"Nome: {tags.get('lead_identificado') or 'Não informado'}\n"
+            f"Tel: {phone}\n"
+            f"Email: {tags.get('email_lead') or 'Não informado'}\n"
+            f"Interesse: {tags.get('lead_tipo_imovel') or 'Não informado'}\n"
+            f"Região: {tags.get('localizacao') or 'Não informado'}\n"
+            f"Budget: {tags.get('faixa_valor') or 'Não informado'}\n"
+            f"Perfil: {perfil or 'Não informado'}\n"
+            f"Seleção: {data_selecao}"
+        )
+        await KommoService().add_note_to_lead(kommo_lead_id, nota)
+
 
 async def _notify_corretor_frio(
     phone: str,
@@ -479,6 +494,7 @@ async def _notify_corretor_frio(
     total_score: int,
     barreira: str = "",
     estrategia: str = "",
+    kommo_lead_id=None,
 ) -> None:
     """Envia email ao sistema quando lead FRIO entra em nutrição ativa (Revisão: 30 dias)."""
     from datetime import datetime, timezone, timedelta
@@ -503,8 +519,24 @@ async def _notify_corretor_frio(
         phone,
     )
 
+    if kommo_lead_id:
+        nota = (
+            f"❄️ LEAD FRIO - NUTRIÇÃO ATIVA\n"
+            f"Score: {total_score} pontos\n"
+            f"Nome: {tags.get('lead_identificado') or 'Não informado'}\n"
+            f"Tel: {phone}\n"
+            f"Email: {tags.get('email_lead') or 'Não informado'}\n"
+            f"Interesse: {tags.get('lead_tipo_imovel') or 'Não informado'}\n"
+            f"Região: {tags.get('localizacao') or 'Não informado'}\n"
+            f"Budget: {tags.get('faixa_valor') or 'Não informado'}\n"
+            f"Barreira: {barreira or 'A identificar'}\n"
+            f"Estratégia: {estrategia or 'Nutrição automática'}\n"
+            f"Entrada na nutrição: {data_entrada}"
+        )
+        await KommoService().add_note_to_lead(kommo_lead_id, nota)
 
-async def _notify_corretor_visita(phone: str, tags: dict, total_score: int) -> None:
+
+async def _notify_corretor_visita(phone: str, tags: dict, total_score: int, kommo_lead_id=None) -> None:
     """Envia email ao corretor quando visita de lead quente investidor e confirmada."""
     imoveis = tags.get("imoveis_apresentados") or tags.get("lead_tipo_imovel", "")
     result = await EmailService().send_investor_corretor_notification(
@@ -522,6 +554,20 @@ async def _notify_corretor_visita(phone: str, tags: dict, total_score: int) -> N
         result.get("status"),
         phone,
     )
+
+    if kommo_lead_id:
+        nota = (
+            f"🔥 LEAD QUENTE - URGENTE\n"
+            f"Score: {total_score} pontos\n"
+            f"Nome: {tags.get('lead_identificado') or 'Não informado'}\n"
+            f"Tel: {phone}\n"
+            f"Email: {tags.get('email_lead') or 'Não informado'}\n"
+            f"Interesse: {imoveis or 'Não informado'}\n"
+            f"Região: {tags.get('localizacao') or 'Não informado'}\n"
+            f"Budget: {tags.get('faixa_valor') or 'Não informado'}\n"
+            f"Visita: {tags.get('data_visita') or 'A confirmar'}"
+        )
+        await KommoService().add_note_to_lead(kommo_lead_id, nota)
 
 
 # ---------------------------------------------------------------------------
@@ -1459,7 +1505,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
         logger.info("INVESTOR | Data visita=%r | phone=%s", data_visita, phone)
 
         await send_whatsapp_message(phone, INVESTOR_QUENTE_VISITA_CONFIRMADA)
-        await _notify_corretor_visita(phone, tags, total_score)
+        await _notify_corretor_visita(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
         return {
             "current_node": "investor",
             "tags": tags,
@@ -1486,7 +1532,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
         logger.info("INVESTOR | Data visita confirmada=%r | phone=%s", data_visita, phone)
 
         await send_whatsapp_message(phone, INVESTOR_QUENTE_VISITA_CONFIRMADA)
-        await _notify_corretor_visita(phone, tags, total_score)
+        await _notify_corretor_visita(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
         return {
             "current_node": "investor",
             "tags": tags,
@@ -1545,7 +1591,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
             "para confirmar tudo. Até logo! 😊"
         )
         await send_whatsapp_message(phone, msg_enc)
-        await _notify_corretor_visita(phone, tags, total_score)
+        await _notify_corretor_visita(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
         return {
             "current_node": "investor",
             "tags": tags,
@@ -1574,7 +1620,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
             "para confirmar tudo. Até logo! 😊"
         )
         await send_whatsapp_message(phone, msg_enc)
-        await _notify_corretor_visita(phone, tags, total_score)
+        await _notify_corretor_visita(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
         return {
             "current_node": "investor",
             "tags": tags,
@@ -1687,7 +1733,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
         if stage_id and kommo_lead_id:
             await kommo.update_lead_stage(kommo_lead_id, stage_id)
 
-        await _notify_corretor_morno(phone, tags, total_score)
+        await _notify_corretor_morno(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
         await send_whatsapp_message(phone, INVESTOR_MORNO_CONSULTORIA)
         return {
             "current_node": "investor",
@@ -1727,7 +1773,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
         if stage_id and kommo_lead_id:
             await kommo.update_lead_stage(kommo_lead_id, stage_id)
 
-        await _notify_corretor_morno(phone, tags, total_score)
+        await _notify_corretor_morno(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
         await send_whatsapp_message(phone, INVESTOR_MORNO_CONSULTORIA)
         return {
             "current_node": "investor",
@@ -1811,6 +1857,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
                 phone, tags, total_score,
                 barreira="Financeira",
                 estrategia="Consultor financeiro apresentado",
+                kommo_lead_id=kommo_lead_id,
             )
             return {
                 "current_node": "investor",
@@ -1831,6 +1878,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
                 phone, tags, total_score,
                 barreira="Timing",
                 estrategia="Lista VIP ativada + guia do mercado enviado",
+                kommo_lead_id=kommo_lead_id,
             )
             return {
                 "current_node": "investor",
@@ -1851,6 +1899,7 @@ async def _investor_node_impl(state: AgentState) -> dict:
             phone, tags, total_score,
             barreira="Conhecimento",
             estrategia="Tour no showroom proposto",
+            kommo_lead_id=kommo_lead_id,
         )
         return {
             "current_node": "investor",

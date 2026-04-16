@@ -475,6 +475,31 @@ class KommoService:
         if kommo_contact_id:
             await self.add_tags_to_contact(kommo_contact_id, tag_labels)
 
+    async def add_note_to_lead(self, kommo_lead_id: str | int, text: str) -> bool:
+        """Adiciona uma nota (common note) ao negócio no KOMMO."""
+        if not self.is_enabled() or not kommo_lead_id:
+            return False
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/leads/{kommo_lead_id}/notes",
+                    headers=self._headers(),
+                    json=[{"note_type": "common", "params": {"text": text}}],
+                )
+                response.raise_for_status()
+                logger.info("KOMMO | Nota adicionada | lead_id=%s", kommo_lead_id)
+                return True
+        except httpx.HTTPStatusError as exc:
+            logger.error(
+                "KOMMO | Erro ao adicionar nota | lead_id=%s | status=%s",
+                kommo_lead_id,
+                exc.response.status_code,
+            )
+            return False
+        except Exception as exc:
+            logger.error("KOMMO | Falha ao adicionar nota | lead_id=%s | erro=%s", kommo_lead_id, exc)
+            return False
+
     def stage_id_for_classification(self, classification: str) -> Optional[int]:
         """
         Retorna o ID do estagio KOMMO para a classificacao do lead.

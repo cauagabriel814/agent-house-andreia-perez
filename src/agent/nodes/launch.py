@@ -837,6 +837,22 @@ async def _launch_node_impl(state: AgentState) -> dict:
                 phone,
             )
 
+            # Resumo do lead no KOMMO
+            if kommo_lead_id:
+                nota = (
+                    f"🔴 LEAD LANÇAMENTO - URGENTE\n"
+                    f"Score: {total_score} pontos\n"
+                    f"Nome: {nome_display or 'Não informado'}\n"
+                    f"Tel: {phone}\n"
+                    f"Email: {(email if tem_email else tags.get('email_lead')) or 'Não informado'}\n"
+                    f"Empreendimento: {tags.get('lead_imovel_especifico') or _EMPREENDIMENTO_PADRAO}\n"
+                    f"Interesse: {tags.get('planta_interesse') or 'Não informado'}\n"
+                    f"Pagamento: {tags.get('forma_pagamento_lancamento') or 'Não informado'}\n"
+                    f"Urgência: {tags.get('urgencia_lancamento') or 'A definir'}\n"
+                    f"Origem: {tags.get('origem_campanha') or tags.get('utm_source') or 'Direto'}"
+                )
+                await kommo.add_note_to_lead(kommo_lead_id, nota)
+
             # Notificacao corretor URGENTE (SLA 1h)
             if lead_id:
                 async with async_session() as session:

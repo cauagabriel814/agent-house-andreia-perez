@@ -37,6 +37,34 @@ def _load_file(path: str) -> str:
     return _load_docx(path)
 
 
+def ingest_text(text: str, source: str = "manual", clear: bool = True) -> int:
+    """
+    Ingere texto puro na vector store.
+
+    Args:
+        text: Conteúdo a ser indexado
+        source: Identificador da fonte (usado nos metadados)
+        clear: Se True, limpa a coleção antes de reinserir (evita duplicatas)
+
+    Returns:
+        Número de chunks inseridos
+    """
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = splitter.split_text(text)
+
+    vs = get_vectorstore()
+
+    if clear:
+        try:
+            vs.delete_collection()
+            vs = get_vectorstore()
+        except Exception:
+            pass
+
+    vs.add_texts(chunks, metadatas=[{"source": source}] * len(chunks))
+    return len(chunks)
+
+
 def ingest_document(file_path: str, clear: bool = True) -> int:
     """
     Ingere um documento (DOCX ou PDF) na vector store.
