@@ -499,7 +499,7 @@ async def _buyer_node_impl(state: AgentState) -> dict:
     # -----------------------------------------------------------------------
     # Etapa 1: Determinar lancamento ou imovel pronto (resposta ao BUYER_ASK_TIPO do specific)
     # -----------------------------------------------------------------------
-    if last_question is None:
+    if last_question is None or last_question == "buyer_tipo_ask":
         logger.info("BUYER | Classificando tipo de imovel (lancamento/pronto) | phone=%s", phone)
 
         llm = _get_llm()
