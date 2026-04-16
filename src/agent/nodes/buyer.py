@@ -469,7 +469,7 @@ async def _buyer_node_impl(state: AgentState) -> dict:
         logger.info("BUYER | FAQ detectado em fluxo ativo | phone=%s", phone)
         return {
             "current_node": "faq",
-            "last_question": last_question,
+            "last_question": last_question if last_question else "buyer_tipo_ask",
             "awaiting_response": True,
             "tags": tags,
             "kommo_contact_id": kommo_contact_id,
