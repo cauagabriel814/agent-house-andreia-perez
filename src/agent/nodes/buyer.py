@@ -422,10 +422,29 @@ _TIME_INFO_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Detecta sufixo "k" / "K" em valores monetários (ex: "800k", "800 K")
+_VALOR_K_RE = re.compile(r"^([\d.,]+)\s*[kK]\b")
+
 
 def _has_time_info(text: str) -> bool:
     """Retorna True se o texto contém horário ou período do dia."""
     return bool(_TIME_INFO_RE.search(text or ""))
+
+
+def _normalize_faixa_valor(text: str) -> str:
+    """Padroniza faixa de valor: 800k / 800K → 800 mil. Outros formatos intactos."""
+    t = (text or "").strip()
+    m = _VALOR_K_RE.match(t)
+    if m:
+        return f"{m.group(1)} mil"
+    return t
+
+
+def _get_today_str() -> str:
+    """Data atual em Cuiabá (UTC-4) no formato dd/mm/aaaa."""
+    from datetime import datetime, timezone
+    cuiaba_tz = timezone(timedelta(hours=-4))
+    return datetime.now(tz=cuiaba_tz).strftime("%d/%m/%Y")
 
 
 async def _finalize_visit_scheduling(
@@ -697,6 +716,7 @@ async def _buyer_node_impl(state: AgentState) -> dict:
             effective_message, "faixa de investimento ou orcamento para o imovel"
         )
         if not _is_off_topic(faixa_extract) and not _is_missing(faixa_extract):
+            faixa_extract = _normalize_faixa_valor(faixa_extract)
             tags = await _save_tag(lead_id, tags, "faixa_valor", faixa_extract)
             logger.info(
                 "BUYER | Faixa_valor extraida na Etapa 2: %r | phone=%s", faixa_extract, phone
@@ -922,6 +942,7 @@ async def _buyer_node_impl(state: AgentState) -> dict:
         elif _is_missing(faixa):
             faixa = "nao informado"
 
+        faixa = _normalize_faixa_valor(faixa)
         tags = await _save_tag(lead_id, tags, "faixa_valor", faixa)
 
         logger.info(
@@ -1447,7 +1468,10 @@ async def _buyer_node_impl(state: AgentState) -> dict:
             }
 
         data_horario = await _extract_field(
-            effective_message, "data, dia e horario/periodo preferidos para a visita"
+            effective_message,
+            f"data da visita no formato dd/mm (hoje é {_get_today_str()}; "
+            "se o lead disse 'amanhã', 'hoje' ou expressão relativa, converta para dd/mm); "
+            "inclua o horário se mencionado (ex: '23/04', '23/04 às 14h')",
         )
 
         if not _has_time_info(data_horario):
@@ -1479,7 +1503,10 @@ async def _buyer_node_impl(state: AgentState) -> dict:
         logger.info("BUYER | Confirmando data especifica da visita | phone=%s", phone)
 
         data_horario = await _extract_field(
-            effective_message, "data, dia e horario/periodo preferidos para a visita"
+            effective_message,
+            f"data da visita no formato dd/mm (hoje é {_get_today_str()}; "
+            "se o lead disse 'amanhã', 'hoje' ou expressão relativa, converta para dd/mm); "
+            "inclua o horário se mencionado (ex: '23/04', '23/04 às 14h')",
         )
 
         if not _has_time_info(data_horario):
