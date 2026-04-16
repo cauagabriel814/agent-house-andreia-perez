@@ -799,7 +799,7 @@ async def get_reengajamento():
                     JOIN leads l ON l.id = sj.lead_id
                     WHERE sj.status = 'pending'
                       AND sj.scheduled_for > NOW()
-                      AND sj.job_type IN :tipos
+                      AND sj.job_type = ANY(:tipos)
                       AND NOT EXISTS (
                           SELECT 1 FROM conversations c
                           WHERE c.lead_id = sj.lead_id
@@ -807,7 +807,7 @@ async def get_reengajamento():
                       )
                     ORDER BY sj.scheduled_for ASC
                 """),
-                {"tipos": _reeng_types},
+                {"tipos": list(_reeng_types)},
             )
         ).all()
 
