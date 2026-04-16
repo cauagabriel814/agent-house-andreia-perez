@@ -224,13 +224,20 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
             "messages": [AIMessage(content=reply)],
         }
     else:
-        # Lead prefere continuar — redireciona ao fluxo
-        reply = _CONTINUE_MSG
+        # Lead prefere continuar — re-faz a pergunta do fluxo diretamente
+        await send_whatsapp_message(phone, _CONTINUE_MSG)
+
         if has_active_flow:
-            pending_topic = get_pending_topic(original_lq)
-            reply += f" Voltando para onde estávamos: estava te perguntando sobre *{pending_topic}*."
+            # Busca a pergunta real do fluxo no histórico (penúltima AIMessage —
+            # a última é a do FAQ specialist choice)
+            flow_question = _get_prev_bot_message(state.get("messages") or [])
+            if flow_question:
+                reply = flow_question
+            else:
+                pending_topic = get_pending_topic(original_lq)
+                reply = f"Estava te perguntando sobre *{pending_topic}*."
         else:
-            reply += " Pode falar — o que mais posso te ajudar?"
+            reply = "Pode falar — o que mais posso te ajudar?"
 
         await send_whatsapp_message(phone, reply)
 
@@ -242,6 +249,16 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
             "reask_count": 0,
             "messages": [AIMessage(content=reply)],
         }
+
+
+def _get_prev_bot_message(messages: list) -> str | None:
+    """Retorna a penúltima AIMessage do histórico (a última é a do FAQ specialist choice).
+    Usada para re-perguntar a questão do fluxo quando o lead opta por continuar.
+    """
+    ai_msgs = [m for m in messages if isinstance(m, AIMessage) and m.content]
+    if len(ai_msgs) >= 2:
+        return str(ai_msgs[-2].content).strip()
+    return None
 
 
 async def _send_specialist_notification(phone: str, state: AgentState, unanswered_question: str) -> None:
