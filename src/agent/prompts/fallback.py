@@ -215,6 +215,7 @@ LAST_QUESTION_LABELS: dict[str, str] = {
     "buyer_ticket": "a faixa de investimento que você considera",
     "buyer_tipo": "sua preferência entre imóvel pronto ou lançamento",
     "buyer_barreira": "o que te impede de avançar no momento",
+    "buyer_pronto_nome": "o seu nome",
     "buyer_pronto_faixa": "a faixa de valor que você considera para o imóvel",
     "buyer_pronto_pagamento": "a forma de pagamento preferida (à vista, financiamento, etc)",
     "buyer_pronto_urgencia": "o prazo ou urgência para fechar o negócio",

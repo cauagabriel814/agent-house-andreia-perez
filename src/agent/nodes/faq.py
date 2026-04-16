@@ -206,14 +206,17 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
         await _send_specialist_notification(phone, state, unanswered_q)
 
         # Confirma ao lead
-        reply = _SPECIALIST_CONFIRMED_MSG
+        await send_whatsapp_message(phone, _SPECIALIST_CONFIRMED_MSG)
+
+        # Se há fluxo ativo: re-faz a pergunta real do histórico (mesma lógica do NO path)
         if has_active_flow:
-            pending_topic = get_pending_topic(original_lq)
-            reply += (
-                f"\n\nEnquanto isso, posso continuar te ajudando. "
-                f"Estava te perguntando sobre *{pending_topic}*."
-            )
-        await send_whatsapp_message(phone, reply)
+            flow_question = _get_prev_bot_message(state.get("messages") or [])
+            if flow_question:
+                reask_msg = flow_question
+            else:
+                pending_topic = get_pending_topic(original_lq)
+                reask_msg = f"Estava te perguntando sobre *{pending_topic}*."
+            await send_whatsapp_message(phone, reask_msg)
 
         return {
             "current_node": "faq",
@@ -221,7 +224,7 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
             "awaiting_response": has_active_flow,
             "tags": tags,
             "reask_count": 0,
-            "messages": [AIMessage(content=reply)],
+            "messages": [AIMessage(content=_SPECIALIST_CONFIRMED_MSG)],
         }
     else:
         # Lead prefere continuar — re-faz a pergunta do fluxo diretamente
