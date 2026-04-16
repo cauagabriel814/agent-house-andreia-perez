@@ -223,6 +223,8 @@ LAST_QUESTION_LABELS: dict[str, str] = {
     "buyer_pronto_preferencias": "a região e quantidade de suítes preferidas",
     "buyer_pronto_visita": "se você quer agendar uma visita ao imóvel",
     "buyer_pronto_data": "a data e horário para a visita",
+    "buyer_pronto_data_confirm": "a data preferida para a visita",
+    "buyer_pronto_horario": "o horário preferido para a visita",
     "buyer_pronto_barreira": "o que está te impedindo de avançar agora",
     # Fluxo de lançamento
     "launch_nome": "o seu nome",

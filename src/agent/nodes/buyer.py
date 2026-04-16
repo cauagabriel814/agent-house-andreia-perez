@@ -76,6 +76,7 @@ Etapas (rastreadas por last_question):
                           PRONTO_BARREIRA_CONHECIMENTO -> awaiting_response = True
 """
 
+import re
 import uuid
 from datetime import timedelta
 
@@ -413,6 +414,93 @@ async def _save_tag(lead_id: str | uuid.UUID | None, tags: dict, key: str, value
             tag_svc = TagService(session)
             await tag_svc.set_tag(lead_id, key, value)
     return tags_update
+
+
+# Detecta se a string de data já contém informação de horário
+_TIME_INFO_RE = re.compile(
+    r"\b\d{1,2}h\b|\b\d{1,2}:\d{2}\b|manh[ãa]|tarde|noite|\bàs?\s+\d{1,2}\b",
+    re.IGNORECASE,
+)
+
+
+def _has_time_info(text: str) -> bool:
+    """Retorna True se o texto contém horário ou período do dia."""
+    return bool(_TIME_INFO_RE.search(text or ""))
+
+
+async def _finalize_visit_scheduling(
+    phone: str,
+    lead_id,
+    lead_name: str | None,
+    tags: dict,
+    kommo: "KommoService",
+    kommo_lead_id,
+    kommo_contact_id,
+    data_horario: str,
+) -> dict:
+    """Registra visita, cria notificação/job e confirma ao lead."""
+    nome_display = lead_name or tags.get("lead_identificado", "")
+    tags = await _save_tag(lead_id, tags, "visita_agendada", "true")
+    tags = await _save_tag(lead_id, tags, "data_visita", data_horario)
+
+    logger.info(
+        "BUYER | Visita agendada: %r | TAG: visita_agendada | phone=%s",
+        data_horario, phone,
+    )
+
+    if lead_id:
+        async with async_session() as session:
+            notif_svc = NotificationService(session)
+            await notif_svc.create(
+                lead_id=lead_id,
+                notification_type="corretor_urgente",
+                sla_hours=2,
+                payload={
+                    "phone": phone,
+                    "nome": nome_display,
+                    "regiao": tags.get("localizacao", ""),
+                    "suites": tags.get("suites_interesse", ""),
+                    "faixa_valor": tags.get("faixa_valor", ""),
+                    "forma_pagamento": tags.get("forma_pagamento", ""),
+                    "urgencia": tags.get("urgencia", ""),
+                    "data_visita": data_horario,
+                    "tipo": "imovel_pronto",
+                },
+            )
+        logger.info(
+            "BUYER | Notificacao corretor URGENTE (SLA 2h) criada | phone=%s", phone
+        )
+
+        async with async_session() as session:
+            job_svc = JobService(session)
+            await job_svc.schedule_after(
+                lead_id,
+                "reminder_24h_before",
+                timedelta(hours=24),
+                payload={
+                    "name": nome_display or "voce",
+                    "visit_time": data_horario,
+                    "property_address": tags.get("localizacao", ""),
+                },
+            )
+        logger.info("BUYER | Job reminder_24h_before agendado | lead_id=%s", lead_id)
+
+    msg = PRONTO_VISITA_CONFIRMADA.format(nome=nome_display or "voce")
+    await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+    if kommo_lead_id:
+        stage_id = settings.kommo_stage_map_dict.get("oportunidade_quente")
+        if stage_id:
+            await kommo.update_lead_stage(kommo_lead_id, stage_id)
+    await send_whatsapp_message(phone, msg)
+    return {
+        "current_node": "buyer",
+        "tags": tags,
+        "kommo_contact_id": kommo_contact_id,
+        "kommo_lead_id": kommo_lead_id,
+        "awaiting_response": False,
+        "last_question": "buyer_encerrado",
+        "messages": [AIMessage(content=msg)],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1361,71 +1449,28 @@ async def _buyer_node_impl(state: AgentState) -> dict:
         data_horario = await _extract_field(
             effective_message, "data, dia e horario/periodo preferidos para a visita"
         )
-        nome_display = lead_name or tags.get("lead_identificado", "")
 
-        tags = await _save_tag(lead_id, tags, "visita_agendada", "true")
-        tags = await _save_tag(lead_id, tags, "data_visita", data_horario)
-
-        logger.info(
-            "BUYER | Visita agendada: %r | TAG: visita_agendada | phone=%s",
-            data_horario, phone,
-        )
-
-        if lead_id:
-            async with async_session() as session:
-                notif_svc = NotificationService(session)
-                await notif_svc.create(
-                    lead_id=lead_id,
-                    notification_type="corretor_urgente",
-                    sla_hours=2,
-                    payload={
-                        "phone": phone,
-                        "nome": nome_display,
-                        "regiao": tags.get("localizacao", ""),
-                        "suites": tags.get("suites_interesse", ""),
-                        "faixa_valor": tags.get("faixa_valor", ""),
-                        "forma_pagamento": tags.get("forma_pagamento", ""),
-                        "urgencia": tags.get("urgencia", ""),
-                        "data_visita": data_horario,
-                        "tipo": "imovel_pronto",
-                    },
-                )
+        if not _has_time_info(data_horario):
+            tags["_visita_data_parcial"] = data_horario
+            msg_hora = "Ótimo! E qual horário fica melhor para você? (ex: 10h, 14h, manhã ou tarde)"
             logger.info(
-                "BUYER | Notificacao corretor URGENTE (SLA 2h) criada | phone=%s",
-                phone,
+                "BUYER | Data sem horario (%r) -> pedindo horario | phone=%s",
+                data_horario, phone,
             )
+            await send_whatsapp_message(phone, msg_hora)
+            return {
+                "current_node": "buyer",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "buyer_pronto_horario",
+                "messages": [AIMessage(content=msg_hora)],
+            }
 
-            # Agendar lembrete 24h antes da visita
-            async with async_session() as session:
-                job_svc = JobService(session)
-                await job_svc.schedule_after(
-                    lead_id,
-                    "reminder_24h_before",
-                    timedelta(hours=24),
-                    payload={
-                        "name": nome_display or "voce",
-                        "visit_time": data_horario,
-                        "property_address": tags.get("localizacao", ""),
-                    },
-                )
-            logger.info("BUYER | Job reminder_24h_before agendado | lead_id=%s", lead_id)
-
-        msg = PRONTO_VISITA_CONFIRMADA.format(nome=nome_display or "voce")
-        await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
-        if kommo_lead_id:
-            stage_id = settings.kommo_stage_map_dict.get("oportunidade_quente")
-            if stage_id:
-                await kommo.update_lead_stage(kommo_lead_id, stage_id)
-        await send_whatsapp_message(phone, msg)
-        return {
-            "current_node": "buyer",
-            "tags": tags,
-            "kommo_contact_id": kommo_contact_id,
-            "kommo_lead_id": kommo_lead_id,
-            "awaiting_response": False,
-            "last_question": "buyer_encerrado",
-            "messages": [AIMessage(content=msg)],
-        }
+        return await _finalize_visit_scheduling(
+            phone, lead_id, lead_name, tags, kommo, kommo_lead_id, kommo_contact_id, data_horario
+        )
 
     # -----------------------------------------------------------------------
     # Etapa 10b: Confirmacao da data especifica (apos clarificacao de dia vago)
@@ -1436,68 +1481,52 @@ async def _buyer_node_impl(state: AgentState) -> dict:
         data_horario = await _extract_field(
             effective_message, "data, dia e horario/periodo preferidos para a visita"
         )
-        nome_display = lead_name or tags.get("lead_identificado", "")
 
-        tags = await _save_tag(lead_id, tags, "visita_agendada", "true")
-        tags = await _save_tag(lead_id, tags, "data_visita", data_horario)
+        if not _has_time_info(data_horario):
+            tags["_visita_data_parcial"] = data_horario
+            msg_hora = "Ótimo! E qual horário fica melhor para você? (ex: 10h, 14h, manhã ou tarde)"
+            logger.info(
+                "BUYER | Data confirmada sem horario (%r) -> pedindo horario | phone=%s",
+                data_horario, phone,
+            )
+            await send_whatsapp_message(phone, msg_hora)
+            return {
+                "current_node": "buyer",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "buyer_pronto_horario",
+                "messages": [AIMessage(content=msg_hora)],
+            }
 
-        logger.info(
-            "BUYER | Visita agendada (confirmada): %r | phone=%s", data_horario, phone
+        return await _finalize_visit_scheduling(
+            phone, lead_id, lead_name, tags, kommo, kommo_lead_id, kommo_contact_id, data_horario
         )
 
-        if lead_id:
-            async with async_session() as session:
-                notif_svc = NotificationService(session)
-                await notif_svc.create(
-                    lead_id=lead_id,
-                    notification_type="corretor_urgente",
-                    sla_hours=2,
-                    payload={
-                        "phone": phone,
-                        "nome": nome_display,
-                        "regiao": tags.get("localizacao", ""),
-                        "suites": tags.get("suites_interesse", ""),
-                        "faixa_valor": tags.get("faixa_valor", ""),
-                        "forma_pagamento": tags.get("forma_pagamento", ""),
-                        "urgencia": tags.get("urgencia", ""),
-                        "data_visita": data_horario,
-                        "tipo": "imovel_pronto",
-                    },
-                )
-            logger.info(
-                "BUYER | Notificacao corretor URGENTE (SLA 2h) criada | phone=%s", phone
-            )
+    # -----------------------------------------------------------------------
+    # Etapa 10c: Coleta de horario da visita (apos data sem horario)
+    # -----------------------------------------------------------------------
+    if last_question == "buyer_pronto_horario":
+        logger.info("BUYER | Coletando horario da visita | phone=%s", phone)
 
-            async with async_session() as session:
-                job_svc = JobService(session)
-                await job_svc.schedule_after(
-                    lead_id,
-                    "reminder_24h_before",
-                    timedelta(hours=24),
-                    payload={
-                        "name": nome_display or "voce",
-                        "visit_time": data_horario,
-                        "property_address": tags.get("localizacao", ""),
-                    },
-                )
-            logger.info("BUYER | Job reminder_24h_before agendado | lead_id=%s", lead_id)
+        horario = await _extract_field(
+            effective_message,
+            "horário ou período para a visita (manhã, tarde, hora específica como 10h ou 14h30)",
+        )
+        data_parcial = tags.pop("_visita_data_parcial", "")
 
-        msg = PRONTO_VISITA_CONFIRMADA.format(nome=nome_display or "voce")
-        await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
-        if kommo_lead_id:
-            stage_id = settings.kommo_stage_map_dict.get("oportunidade_quente")
-            if stage_id:
-                await kommo.update_lead_stage(kommo_lead_id, stage_id)
-        await send_whatsapp_message(phone, msg)
-        return {
-            "current_node": "buyer",
-            "tags": tags,
-            "kommo_contact_id": kommo_contact_id,
-            "kommo_lead_id": kommo_lead_id,
-            "awaiting_response": False,
-            "last_question": "buyer_encerrado",
-            "messages": [AIMessage(content=msg)],
-        }
+        if _is_off_topic(horario) or _is_missing(horario):
+            data_horario = data_parcial
+        else:
+            data_horario = f"{data_parcial} às {horario}" if data_parcial else horario
+
+        logger.info(
+            "BUYER | Data+hora final: %r | phone=%s", data_horario, phone
+        )
+        return await _finalize_visit_scheduling(
+            phone, lead_id, lead_name, tags, kommo, kommo_lead_id, kommo_contact_id, data_horario
+        )
 
     # -----------------------------------------------------------------------
     # Etapa 11: Imovel pronto - identificar e tratar barreira (Secao 3.5 PDF)
