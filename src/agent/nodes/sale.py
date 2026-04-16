@@ -10,7 +10,7 @@ from src.agent.prompts.fallback import (
     build_smart_redirect,
     get_last_bot_message,
     is_clarification,
-    is_faq_question,
+    is_faq_question_async,
 )
 from src.agent.prompts.launch import BUYER_FORA_PERFIL
 from src.agent.prompts.sale import (
@@ -172,7 +172,7 @@ async def _sale_node_impl(state: AgentState) -> dict:
     last_bot_message = get_last_bot_message(state.get("messages") or [])
 
     # FAQ: lead perguntou sobre a empresa ou processos → encaminhar para FAQ
-    if is_faq_question(effective_message):
+    if await is_faq_question_async(effective_message):
         logger.info("SALE | FAQ detectado em fluxo ativo | phone=%s", phone)
         return {
             "current_node": "faq",

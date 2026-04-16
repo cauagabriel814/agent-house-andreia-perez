@@ -6,6 +6,8 @@ Centraliza:
   - Mapeamento de last_question → descrição humana do tópico pendente
   - Função para gerar mensagem dinâmica de redirecionamento ao fluxo
   - is_clarification(): detecta pedidos de esclarecimento da pergunta atual
+  - is_faq_question(): detecção rápida via regex
+  - is_faq_question_async(): detecção robusta — regex + fallback LLM
 """
 
 import re
@@ -85,8 +87,80 @@ def is_faq_question(message: str) -> bool:
     que deve ser respondida pelo FAQ, independente do fluxo ativo.
     Exemplos: 'O que é a Casa Andreia Perez?', 'Qual o endereço de vocês?', 'Qual o CNPJ?'
     Diferente de is_clarification(): aqui o lead pergunta sobre algo específico externo ao fluxo.
+    Usa somente regex (sem LLM) — rápido e sem custo.
     """
     return bool(_FAQ_RE.search(message.strip()))
+
+
+# Indicadores rápidos de que a mensagem pode ser uma pergunta (pré-filtro antes do LLM)
+_QUESTION_HINT_RE = re.compile(
+    r"\?|^(o que|qual|como|onde|quando|por que|quanto|quem|voc[eê]s?|"
+    r"atendem|atuam|trabalham|cobrem|existe|tem |h[aá] )",
+    re.IGNORECASE,
+)
+
+# Prompt para o LLM classificar se é uma pergunta FAQ
+_FAQ_LLM_PROMPT = """Você é um classificador de mensagens para um chatbot imobiliário.
+
+Analise a mensagem abaixo e responda APENAS com "sim" ou "não":
+
+A mensagem é uma pergunta ou dúvida sobre a empresa imobiliária, seus serviços, área de atuação, regiões atendidas, processos, taxas, comissões, horários, contatos, documentos ou qualquer informação geral sobre a empresa?
+
+Responda "sim" se a mensagem:
+- Pergunta sobre a empresa, imobiliária ou seus serviços
+- Pergunta sobre localização, cidades ou regiões onde a empresa atua
+- Pergunta sobre como funciona algum processo (financiamento, documentação, avaliação etc.)
+- Pergunta sobre taxas, comissões ou valores cobrados pela empresa
+- Pergunta sobre horários de atendimento ou formas de contato
+
+Responda "não" se a mensagem:
+- É uma resposta direta (ex: "sim", "não", "Cuiabá", "R$ 500.000", "3 quartos")
+- Expressa interesse em comprar, vender, investir ou alugar um imóvel
+- É um cumprimento, agradecimento ou mensagem genérica sem pergunta sobre a empresa
+
+Mensagem: {message}
+
+Resposta (apenas "sim" ou "não"):"""
+
+
+async def is_faq_question_async(message: str) -> bool:
+    """
+    Versão robusta: regex primeiro (rápido/grátis) e, se não casar,
+    usa LLM como fallback para capturar perguntas que a regex não cobre.
+
+    O LLM só é chamado se a mensagem contiver indicadores de pergunta,
+    evitando chamadas desnecessárias em respostas curtas como 'sim' ou '500000'.
+    """
+    # 1. Fast path: regex
+    if is_faq_question(message):
+        return True
+
+    # 2. Pré-filtro: só aciona LLM se a mensagem parecer uma pergunta
+    if not _QUESTION_HINT_RE.search(message.strip()):
+        return False
+
+    # 3. LLM fallback
+    try:
+        from langchain_openai import ChatOpenAI
+        from src.config.settings import settings
+        from src.utils.logger import logger as _logger
+
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0,
+            api_key=settings.openai_api_key,
+            timeout=10,
+        )
+        prompt = _FAQ_LLM_PROMPT.format(message=message[:500])
+        response = await llm.ainvoke(prompt)
+        answer = (response.content or "").strip().lower()
+        is_faq = answer.startswith("sim")
+        _logger.debug("FAQ_DETECT | LLM | msg=%r | resultado=%s", message[:60], is_faq)
+        return is_faq
+    except Exception as exc:
+        from src.utils.logger import logger as _logger
+        _logger.warning("FAQ_DETECT | LLM falhou, usando apenas regex | erro=%s", str(exc))
+        return False
 
 
 # ---------------------------------------------------------------------------

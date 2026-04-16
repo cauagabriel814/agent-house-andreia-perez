@@ -70,7 +70,7 @@ from src.agent.prompts.fallback import (
     build_smart_redirect,
     get_last_bot_message,
     is_clarification,
-    is_faq_question,
+    is_faq_question_async,
 )
 from src.agent.scoring.launch_score import calculate_launch_score
 from src.agent.state import AgentState
@@ -389,7 +389,7 @@ async def _launch_node_impl(state: AgentState) -> dict:
     tags = await extract_context_from_message(effective_message, tags, lead_id)
 
     # FAQ: lead perguntou sobre a empresa ou processos → encaminhar para FAQ
-    if is_faq_question(effective_message):
+    if await is_faq_question_async(effective_message):
         logger.info("LAUNCH | FAQ detectado em fluxo ativo | phone=%s", phone)
         return {
             "current_node": "faq",
