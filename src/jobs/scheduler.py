@@ -46,6 +46,9 @@ from src.utils.logger import logger
 # Task do scheduler (singleton)
 _scheduler_task: asyncio.Task | None = None
 
+# Contador de ciclos (para heartbeat periódico)
+_cycle_count: int = 0
+
 
 # ---------------------------------------------------------------------------
 # Verificacao: lead respondeu desde que o job foi criado?
@@ -111,6 +114,11 @@ async def _execute_job(job: ScheduledJob) -> None:
             "SCHEDULER | Erro ao verificar resposta do lead | job_id=%s", job.id
         )
 
+    logger.info(
+        "SCHEDULER | Iniciando execucao | job_type=%s | lead_id=%s | job_id=%s",
+        job_type, lead_id, job.id,
+    )
+
     try:
         if job_type in ("timeout_5min", "timeout_30min", "inativo_7d"):
             await run_agent_for_timeout(lead_id)
@@ -163,6 +171,12 @@ async def _execute_job(job: ScheduledJob) -> None:
                 job_type,
                 lead_id,
             )
+            return
+
+        logger.info(
+            "SCHEDULER | Job concluido | job_type=%s | lead_id=%s | job_id=%s",
+            job_type, lead_id, job.id,
+        )
 
     except Exception:
         logger.exception(
@@ -187,32 +201,36 @@ async def run_scheduler_loop(interval_seconds: int = 60) -> None:
       2. Marca cada job como 'executed' antes de disparar (evita reprocessamento)
       3. Dispara _execute_job em background (nao bloqueia o loop)
     """
+    global _cycle_count
     logger.info("SCHEDULER | Loop iniciado | intervalo=%ds", interval_seconds)
 
     while True:
+        _cycle_count += 1
         try:
             async with async_session() as session:
                 service = JobService(session)
                 pending_jobs = await service.get_pending_jobs()
 
                 if pending_jobs:
-                    logger.info("SCHEDULER | Processando %d job(s) pendente(s)", len(pending_jobs))
+                    logger.info(
+                        "SCHEDULER | Ciclo=%d | %d job(s) pendente(s) disparados",
+                        _cycle_count, len(pending_jobs),
+                    )
                     for job in pending_jobs:
                         await service.mark_executed(job)
-                        payload_preview = str(job.payload or {})[:100]
-                        logger.info(
-                            "SCHEDULER | Executando: %s | lead_id=%s | job_id=%s | payload=%s",
-                            job.job_type,
-                            job.lead_id,
-                            job.id,
-                            payload_preview,
-                        )
                         asyncio.create_task(_execute_job(job))
                 else:
-                    logger.debug("SCHEDULER | Nenhum job pendente")
+                    # Heartbeat a cada 10 ciclos (~10 min) para confirmar que está vivo
+                    if _cycle_count % 10 == 0:
+                        logger.info(
+                            "SCHEDULER | Heartbeat | ciclo=%d | sem jobs pendentes",
+                            _cycle_count,
+                        )
+                    else:
+                        logger.debug("SCHEDULER | Ciclo=%d | sem jobs pendentes", _cycle_count)
 
         except Exception:
-            logger.exception("SCHEDULER | Erro no loop do scheduler")
+            logger.exception("SCHEDULER | Erro no loop | ciclo=%d", _cycle_count)
 
         await asyncio.sleep(interval_seconds)
 
