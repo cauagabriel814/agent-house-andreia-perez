@@ -250,12 +250,18 @@ async def _send_specialist_notification(phone: str, state: AgentState, unanswere
         from src.services.email_service import EmailService
         service = EmailService()
         lead_name = state.get("lead_name") or ""
-        await service.send_faq_specialist_notification(
+        result = await service.send_faq_specialist_notification(
             lead_phone=phone,
             lead_name=lead_name,
             unanswered_question=unanswered_question,
         )
-        logger.info("FAQ | Notificação de especialista enviada | phone=%s", phone)
+        if result.get("status") == "sent":
+            logger.info("FAQ | Notificação de especialista enviada | phone=%s", phone)
+        else:
+            logger.warning(
+                "FAQ | Notificação de especialista nao enviada | phone=%s | motivo=%s",
+                phone, result.get("reason", result.get("status")),
+            )
     except Exception as exc:
         logger.warning("FAQ | Falha ao enviar notificação de especialista | phone=%s | erro=%s", phone, str(exc))
 
