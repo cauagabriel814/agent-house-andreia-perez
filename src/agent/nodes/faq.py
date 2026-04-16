@@ -36,7 +36,7 @@ _SEM_INFORMACAO = "[SEM_INFORMACAO]"
 
 # Pergunta exibida ao lead quando não temos a resposta
 _SPECIALIST_CHOICE_MSG = (
-    "Não encontrei essa informação aqui. 😊\n\n"
+    "Não encontrei essa informação aqui.\n\n"
     "Posso acionar um de nossos especialistas para te ajudar com isso — "
     "ele entraria em contato com você. O que prefere?\n\n"
     "*1. Quero falar com um especialista*\n"
@@ -45,10 +45,10 @@ _SPECIALIST_CHOICE_MSG = (
 
 _SPECIALIST_CONFIRMED_MSG = (
     "Perfeito! Já registrei seu pedido — um dos nossos especialistas vai entrar em contato "
-    "com você em breve. 😊"
+    "com você em breve."
 )
 
-_CONTINUE_MSG = "Claro, sem problema! 😊"
+_CONTINUE_MSG = "Claro, sem problema!"
 
 # Detecta resposta positiva (quer especialista)
 _YES_RE = re.compile(
@@ -211,7 +211,7 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
             pending_topic = get_pending_topic(original_lq)
             reply += (
                 f"\n\nEnquanto isso, posso continuar te ajudando. "
-                f"Estava te perguntando sobre *{pending_topic}* — quando quiser, é só responder! 😊"
+                f"Estava te perguntando sobre *{pending_topic}*."
             )
         await send_whatsapp_message(phone, reply)
 
@@ -228,9 +228,9 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
         reply = _CONTINUE_MSG
         if has_active_flow:
             pending_topic = get_pending_topic(original_lq)
-            reply += f" Voltando para onde estávamos: estava te perguntando sobre *{pending_topic}*. 😊"
+            reply += f" Voltando para onde estávamos: estava te perguntando sobre *{pending_topic}*."
         else:
-            reply += " Pode falar — o que mais posso te ajudar? 😊"
+            reply += " Pode falar — o que mais posso te ajudar?"
 
         await send_whatsapp_message(phone, reply)
 
