@@ -484,6 +484,63 @@ class EmailService:
 
         return await self.send(to, subject, body_html, body_text)
 
+    async def send_faq_specialist_notification(
+        self,
+        lead_phone: str,
+        lead_name: str,
+        unanswered_question: str,
+    ) -> dict:
+        """Notifica corretor sobre dúvida que o FAQ não conseguiu responder (lead solicitou especialista)."""
+        to = settings.email_corretor
+        if not to:
+            logger.warning("Email | email_corretor nao configurado. Notificação de FAQ ignorada.")
+            return {"status": "skipped", "reason": "email_corretor_not_configured"}
+
+        subject = f"❓ DÚVIDA SEM RESPOSTA — Lead solicitou especialista | {lead_name or lead_phone}"
+
+        body_html = f"""
+        <html><body style="font-family: Arial, sans-serif; color: #333; background: #f5f5f5;">
+          <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: #1a1a2e; color: #fff; padding: 12px 20px; border-radius: 8px 8px 0 0;">
+              <strong>📋 NOTIFICAÇÃO — DÚVIDA SEM RESPOSTA</strong>
+            </div>
+            <div style="background: #fff; border: 1px solid #ddd; border-top: none; padding: 24px; border-radius: 0 0 8px 8px;">
+              <div style="background: #fff8e1; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 4px; margin-bottom: 20px;">
+                <strong style="color: #b45309;">❓ O agente não tinha essa informação e o lead pediu para falar com um especialista.</strong>
+              </div>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #666; width: 40%;"><strong>Lead:</strong></td>
+                  <td style="padding: 8px 0;">{lead_name or "Não informado"}</td>
+                </tr>
+                <tr style="background: #f9f9f9;">
+                  <td style="padding: 8px 0; color: #666;"><strong>WhatsApp:</strong></td>
+                  <td style="padding: 8px 0;">{lead_phone}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666; vertical-align: top;"><strong>Pergunta:</strong></td>
+                  <td style="padding: 8px 0;"><em>"{unanswered_question}"</em></td>
+                </tr>
+              </table>
+              <div style="margin-top: 20px; background: #fff8e1; padding: 12px 16px; border-radius: 4px; text-align: center;">
+                <strong>Entre em contato com o lead o quanto antes!</strong>
+              </div>
+            </div>
+          </div>
+        </body></html>
+        """
+
+        body_text = (
+            f"DÚVIDA SEM RESPOSTA — Lead solicitou especialista\n"
+            f"{'='*40}\n"
+            f"Lead: {lead_name or 'Não informado'}\n"
+            f"WhatsApp: {lead_phone}\n"
+            f"Pergunta: \"{unanswered_question}\"\n\n"
+            f"Entre em contato com o lead o quanto antes!"
+        )
+
+        return await self.send(to, subject, body_html, body_text)
+
     async def send_launch_material(self, to: str, lead_name: str, launch_data: Optional[dict] = None) -> dict:
         """Envia material de lancamento (plantas, tabela, tour virtual) para lead."""
         subject = f"Material Exclusivo - Lancamento | {self.from_name}"

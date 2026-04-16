@@ -77,8 +77,13 @@ def route_entry(state: AgentState) -> str:
         return current_node  # continua no fluxo atual
 
     if current_node in _TRANSIENT_NODES:
-        # Se havia um fluxo ativo, retorna direto ao node correto sem passar pelo router
         last_q = state.get("last_question") or ""
+
+        # Lead está respondendo à pergunta de especialista vs. continuar
+        if last_q == "faq_specialist_choice":
+            return "faq"
+
+        # Se havia um fluxo ativo, retorna direto ao node correto sem passar pelo router
         for prefix, node in _QUESTION_PREFIX_TO_NODE.items():
             if last_q.startswith(prefix):
                 return node
