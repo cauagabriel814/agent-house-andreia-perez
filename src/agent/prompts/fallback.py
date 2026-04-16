@@ -55,6 +55,13 @@ _FAQ_RE = re.compile(
     # Processo e prazo
     r"quanto tempo (leva|demora)|prazo (de|para) (avalia[çc][aã]o|venda|loca[çc][aã]o|processo)|"
     r"o que (eu )?preciso (para|trazer|levar)|quais (s[aã]o os )?requisitos|"
+    # Cobertura / região de atuação
+    r"\batendem\s+(em|n[ao]s?)\b|"
+    r"voc[eê]s? (tamb[eé]m )?(atendem|atuam|trabalham)\b|"
+    r"\batuam\s+(em|n[ao]s?)\b|"
+    r"[aá]rea (de )?atendimento|regi[oõ]es? (de )?(atendimento|atua[çc][aã]o)|"
+    r"cobrem (a |o |essa |esta )?regi[aã]o|qual [eé] a regi[aã]o (de voc[eê]s|de atua[çc][aã]o)|"
+    r"onde voc[eê]s? (atuam|trabalham|operam)|"
     # Disponibilidade de imóveis
     r"voc[eê]s? (t[eê]m|tem|possu[ií]) im[oó]ve[il]s?|"
     r"t[eê]m (im[oó]veis?|ap[aê]s?|casas?|terrenos?) (disponíveis?|para (venda|aluguel|loca[çc][aã]o))"
