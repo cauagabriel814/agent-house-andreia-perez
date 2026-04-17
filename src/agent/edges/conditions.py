@@ -79,8 +79,8 @@ def route_entry(state: AgentState) -> str:
     if current_node in _TRANSIENT_NODES:
         last_q = state.get("last_question") or ""
 
-        # Lead está respondendo à pergunta de especialista vs. continuar
-        if last_q == "faq_specialist_choice":
+        # Lead está respondendo a uma pergunta interna do FAQ (escolha ou confirmação)
+        if last_q in ("faq_specialist_choice", "faq_clarity_check"):
             return "faq"
 
         # Se havia um fluxo ativo, retorna direto ao node correto sem passar pelo router
