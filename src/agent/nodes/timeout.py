@@ -45,7 +45,7 @@ async def _timeout_node_impl(state: AgentState) -> dict:
     phone = state["phone"]
     lead_id = state.get("lead_id")
     timeout_count = state.get("timeout_count", 0)
-    lead_name = state.get("lead_name") or "voce"
+    lead_name = state.get("lead_name") or "você"
     tags = dict(state.get("tags") or {})
     region = tags.get("localizacao", "Cuiaba")
     kommo_contact_id = state.get("kommo_contact_id")
