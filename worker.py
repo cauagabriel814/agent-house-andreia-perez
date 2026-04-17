@@ -18,6 +18,7 @@ import asyncio
 from src.utils.logger import logger  # noqa: E402
 
 from src.jobs.scheduler import start_scheduler, stop_scheduler
+from src.knowledge.ingest import ensure_knowledge_loaded
 from src.queue.connection import close_rabbitmq_connection, setup_queues
 from src.queue.consumer import start_consumer, stop_consumer
 from src.queue.dispatcher import handle_incoming_message
@@ -25,6 +26,8 @@ from src.queue.dispatcher import handle_incoming_message
 
 async def main() -> None:
     logger.info("WORKER | Iniciando...")
+
+    await ensure_knowledge_loaded()
 
     await setup_queues()
     logger.info("WORKER | Filas RabbitMQ declaradas")

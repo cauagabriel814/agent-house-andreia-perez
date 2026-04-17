@@ -1,32 +1,43 @@
-import os
-from pathlib import Path
+"""
+Busca vetorial na knowledge base usando PostgreSQL + pgvector.
 
-from langchain_chroma import Chroma
-from langchain_openai import OpenAIEmbeddings
+search_knowledge() é síncrona — chame via asyncio.to_thread no contexto async.
+"""
+import psycopg2
+from pgvector.psycopg2 import register_vector
+from openai import OpenAI
 
 from src.config.settings import settings
 
-_CHROMA_DIR = str(Path(__file__).resolve().parents[2] / "data" / "chroma")
-_COLLECTION = "faq_knowledge"
-
-_embeddings = OpenAIEmbeddings(
-    model="text-embedding-3-small",
-    api_key=settings.openai_api_key,
-)
+_EMBEDDING_MODEL = "text-embedding-3-small"
 
 
-def get_vectorstore() -> Chroma:
-    """Retorna o vectorstore ChromaDB persistido em data/chroma/."""
-    os.makedirs(_CHROMA_DIR, exist_ok=True)
-    return Chroma(
-        collection_name=_COLLECTION,
-        embedding_function=_embeddings,
-        persist_directory=_CHROMA_DIR,
-    )
+def _get_conn():
+    """Abre conexão psycopg2 com pgvector registrado."""
+    conn = psycopg2.connect(settings.database_url_sync)
+    register_vector(conn)
+    return conn
 
 
 def search_knowledge(query: str, k: int = 3) -> list[str]:
-    """Busca os k trechos mais relevantes da base de conhecimento."""
-    vs = get_vectorstore()
-    docs = vs.similarity_search(query, k=k)
-    return [doc.page_content for doc in docs]
+    """Retorna os k chunks mais relevantes para a query usando similaridade por cosseno."""
+    client = OpenAI(api_key=settings.openai_api_key)
+    response = client.embeddings.create(model=_EMBEDDING_MODEL, input=query)
+    query_embedding = response.data[0].embedding
+
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT content
+                FROM knowledge_chunks
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (query_embedding, k),
+            )
+            rows = cur.fetchall()
+        return [row[0] for row in rows]
+    finally:
+        conn.close()

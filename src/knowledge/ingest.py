@@ -1,93 +1,92 @@
-from pathlib import Path
+"""
+Ingestão da knowledge base no PostgreSQL (pgvector).
 
-from docx import Document
+- ingest_text()             : ingere texto puro, dividindo em chunks e gerando embeddings
+- ensure_knowledge_loaded() : verifica se a tabela está vazia e ingere automaticamente
+"""
+import asyncio
+
+import psycopg2
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from openai import OpenAI
+from pgvector.psycopg2 import register_vector
 
-from src.knowledge.vectorstore import get_vectorstore, _COLLECTION
+from src.config.settings import settings
+from src.utils.logger import logger
 
-
-def _load_docx(path: str) -> str:
-    """Extrai texto de um arquivo .docx."""
-    doc = Document(path)
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-    return "\n\n".join(paragraphs)
-
-
-def _load_pdf(path: str) -> str:
-    """Extrai texto de um arquivo .pdf usando PyPDF2."""
-    try:
-        from PyPDF2 import PdfReader
-    except ImportError:
-        from pypdf import PdfReader  # fallback para versoes mais novas
-
-    reader = PdfReader(path)
-    pages = []
-    for page in reader.pages:
-        text = page.extract_text()
-        if text and text.strip():
-            pages.append(text.strip())
-    return "\n\n".join(pages)
+_EMBEDDING_MODEL = "text-embedding-3-small"
+_CHUNK_SIZE = 500
+_CHUNK_OVERLAP = 50
 
 
-def _load_file(path: str) -> str:
-    """Carrega texto de DOCX ou PDF conforme extensão."""
-    ext = Path(path).suffix.lower()
-    if ext == ".pdf":
-        return _load_pdf(path)
-    return _load_docx(path)
+def _get_conn():
+    conn = psycopg2.connect(settings.database_url_sync)
+    register_vector(conn)
+    return conn
 
 
 def ingest_text(text: str, source: str = "manual", clear: bool = True) -> int:
     """
-    Ingere texto puro na vector store.
+    Divide o texto em chunks, gera embeddings e insere na tabela knowledge_chunks.
 
     Args:
-        text: Conteúdo a ser indexado
-        source: Identificador da fonte (usado nos metadados)
-        clear: Se True, limpa a coleção antes de reinserir (evita duplicatas)
+        text:   Conteúdo a ser indexado.
+        source: Identificador da fonte (gravado nos metadados).
+        clear:  Se True, apaga todos os chunks existentes antes de inserir.
 
     Returns:
-        Número de chunks inseridos
+        Número de chunks inseridos.
     """
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=_CHUNK_SIZE,
+        chunk_overlap=_CHUNK_OVERLAP,
+    )
     chunks = splitter.split_text(text)
+    if not chunks:
+        return 0
 
-    vs = get_vectorstore()
+    client = OpenAI(api_key=settings.openai_api_key)
+    response = client.embeddings.create(model=_EMBEDDING_MODEL, input=chunks)
+    embeddings = [item.embedding for item in response.data]
 
-    if clear:
-        try:
-            vs.delete_collection()
-            vs = get_vectorstore()
-        except Exception:
-            pass
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            if clear:
+                cur.execute("TRUNCATE knowledge_chunks")
+            cur.executemany(
+                "INSERT INTO knowledge_chunks (content, embedding, source) VALUES (%s, %s::vector, %s)",
+                [(chunk, emb, source) for chunk, emb in zip(chunks, embeddings)],
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
-    vs.add_texts(chunks, metadatas=[{"source": source}] * len(chunks))
     return len(chunks)
 
 
-def ingest_document(file_path: str, clear: bool = True) -> int:
+async def ensure_knowledge_loaded() -> None:
     """
-    Ingere um documento (DOCX ou PDF) na vector store.
-
-    Args:
-        file_path: Caminho para o arquivo (.docx ou .pdf)
-        clear: Se True, limpa a coleção antes de reinserir (evita duplicatas)
-
-    Returns:
-        Número de chunks inseridos
+    Verifica se há chunks na knowledge base.
+    Se a tabela estiver vazia, executa o ingest automático com o KNOWLEDGE_TEXT padrão.
+    Chamado no startup do worker.
     """
-    text = _load_file(file_path)
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_text(text)
+    from src.db.database import async_session
+    import sqlalchemy as sa
 
-    vs = get_vectorstore()
+    async with async_session() as session:
+        result = await session.execute(sa.text("SELECT COUNT(*) FROM knowledge_chunks"))
+        count = result.scalar() or 0
 
-    if clear:
-        try:
-            vs.delete_collection()
-            vs = get_vectorstore()
-        except Exception:
-            pass
+    if count > 0:
+        logger.info("KNOWLEDGE | Base carregada | chunks=%d", count)
+        return
 
-    vs.add_texts(chunks, metadatas=[{"source": Path(file_path).name}] * len(chunks))
-    return len(chunks)
+    logger.info("KNOWLEDGE | Tabela vazia — iniciando ingestão automática...")
+    from src.knowledge.knowledge_base import KNOWLEDGE_TEXT
+
+    n = await asyncio.to_thread(ingest_text, KNOWLEDGE_TEXT, "knowledge_base", True)
+    logger.info("KNOWLEDGE | Ingestão concluída | chunks=%d", n)

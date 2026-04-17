@@ -111,14 +111,6 @@ services:
       CORRETOR_PHONES:
       APPOINTMENT_BASE_URL:
       APPOINTMENT_API_KEY:
-    volumes:
-      - chroma_data:/app/data/chroma
     depends_on:
       - migration
     restart: unless-stopped
-
-# ----------------------------------------------------------------
-# Volumes persistentes
-# ----------------------------------------------------------------
-volumes:
-  chroma_data:

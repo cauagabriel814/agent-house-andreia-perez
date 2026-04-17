@@ -7,6 +7,7 @@ from src.db.models.scheduled_job import ScheduledJob
 from src.db.models.notification import Notification
 from src.db.models.user import User
 from src.db.models.property import Property
+from src.db.models.knowledge import KnowledgeChunk
 
 __all__ = [
     "Base",
@@ -19,4 +20,5 @@ __all__ = [
     "Notification",
     "User",
     "Property",
+    "KnowledgeChunk",
 ]
