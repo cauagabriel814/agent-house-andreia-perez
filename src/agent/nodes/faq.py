@@ -37,8 +37,8 @@ _SEM_INFORMACAO = "[SEM_INFORMACAO]"
 # Pergunta após responder FAQ com fluxo ativo
 _CLARITY_CHECK_MSG = (
     "Consegui esclarecer sua dúvida? 😊\n\n"
-    "*1. Sim, tudo certo!*\n"
-    "*2. Ainda tenho dúvidas*"
+    "1. Sim, podemos continuar!\n"
+    "2. Ainda tenho dúvidas"
 )
 
 # Pergunta exibida ao lead quando não temos a resposta
