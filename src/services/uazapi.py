@@ -78,8 +78,8 @@ class UazapiService:
         """
         Baixa midia via API UAZAPI usando o messageId.
 
-        Endpoint: POST {base_url}/download/base64
-        Body: {"messageId": "...", "chatId": "..."}
+        Endpoint: POST {base_url}/message/download
+        Body: {"id": "...", "return_base64": true, ...}
         Retorna: (bytes_da_midia, mimetype) ou (None, None) se falhar.
         """
         if not self._is_configured():
@@ -89,15 +89,22 @@ class UazapiService:
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(
-                    f"{self.base_url}/download/base64",
+                    f"{self.base_url}/message/download",
                     headers=self._headers(),
-                    json={"messageId": message_id, "chatId": chat_id},
+                    json={
+                        "id": message_id,
+                        "return_base64": True,
+                        "generate_mp3": False,
+                        "return_link": False,
+                        "transcribe": False,
+                        "download_quoted": False,
+                    },
                 )
                 response.raise_for_status()
                 data = response.json()
 
-                b64 = data.get("base64") or data.get("data")
-                mimetype = data.get("mimetype") or data.get("mediaType")
+                b64 = data.get("base64") or data.get("data") or data.get("file")
+                mimetype = data.get("mimetype") or data.get("mediaType") or data.get("mime")
 
                 if b64:
                     media_bytes = base64.b64decode(b64)

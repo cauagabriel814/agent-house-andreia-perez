@@ -67,8 +67,13 @@ def _map_uazapi_message(msg: dict) -> tuple[str, str | None, str | None, str | N
     # Mimetype
     media_mimetype = msg.get("mediaType") or msg.get("mimetype") or None
 
-    # URL da midia (alguns setups UAZAPI enviam URL direta)
-    media_url = msg.get("url") or msg.get("mediaUrl") or msg.get("fileUrl") or None
+    # URL da midia (alguns setups UAZAPI enviam URL direta; chave pode ser maiuscula)
+    media_url = (
+        msg.get("url") or msg.get("URL")
+        or msg.get("mediaUrl") or msg.get("MediaUrl")
+        or msg.get("fileUrl") or msg.get("FileUrl")
+        or None
+    )
 
     # Base64 inline (depende da configuracao da instancia UAZAPI)
     media_base64 = msg.get("base64") or msg.get("mediaData") or msg.get("data") or None
