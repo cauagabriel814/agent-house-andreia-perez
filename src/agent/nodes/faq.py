@@ -34,6 +34,13 @@ _SYSTEM_PROMPT = (
 # Sentinel retornado pelo LLM quando não há informação suficiente no contexto
 _SEM_INFORMACAO = "[SEM_INFORMACAO]"
 
+# Pergunta após responder FAQ com fluxo ativo
+_CLARITY_CHECK_MSG = (
+    "Consegui esclarecer sua dúvida? 😊\n\n"
+    "*1. Sim, tudo certo!*\n"
+    "*2. Ainda tenho dúvidas*"
+)
+
 # Pergunta exibida ao lead quando não temos a resposta
 _SPECIALIST_CHOICE_MSG = (
     "Não encontrei essa informação aqui.\n\n"
@@ -50,32 +57,44 @@ _SPECIALIST_CONFIRMED_MSG = (
 
 _CONTINUE_MSG = "Claro, sem problema!"
 
-# Detecta resposta positiva (quer especialista)
+# Detecta resposta positiva (quer especialista / dúvida esclarecida)
 _YES_RE = re.compile(
     r"\b(sim|s\b|ok|pode|quero|chama|liga|contata|especialista|manda|claro|1)\b",
     re.IGNORECASE,
 )
 
-# Detecta resposta negativa (quer continuar conversa)
+# Detecta resposta negativa (quer continuar conversa / ainda tem dúvidas)
 _NO_RE = re.compile(
-    r"\b(n[aã]o|nao|n\b|2|continua(r)?|segue|seguir|prefiro continuar|vamos continuar)\b",
+    r"\b(n[aã]o|nao|n\b|2|continua(r)?|segue|seguir|prefiro continuar|vamos continuar|ainda)\b",
     re.IGNORECASE,
 )
 
 
 async def faq_node(state: AgentState) -> dict:
     """
-    Node: FAQ — responde dúvidas pontuais do lead via RAG (ChromaDB + text-embedding-3-small).
+    Node: FAQ — responde dúvidas pontuais do lead via RAG (PostgreSQL + text-embedding-3-small).
 
     Fluxo:
-    1. Se last_question == "faq_specialist_choice": trata resposta do lead (especialista ou continuar)
-    2. Caso normal: busca na knowledge base e gera resposta
-    3. Se não há informação: pergunta ao lead se quer especialista ou continuar o fluxo
+    1. faq_clarity_check  : trata "1/2" após FAQ respondido com fluxo ativo
+    2. faq_specialist_choice: trata "1/2" após FAQ sem resposta
+    3. Caso normal: busca na knowledge base e gera resposta
     """
     phone = state["phone"]
     last_question = state.get("last_question") or ""
 
-    # --- Tratamento da resposta à escolha de especialista ---
+    # --- Tratamento da confirmação de dúvida esclarecida ---
+    if last_question == "faq_clarity_check":
+        try:
+            return await _handle_clarity_check(state)
+        except Exception as exc:
+            logger.exception("FAQ | Erro ao tratar clarity check | phone=%s | erro=%s", phone, str(exc))
+            try:
+                await send_whatsapp_message(phone, TECHNICAL_ERROR_MESSAGE)
+            except Exception:
+                pass
+            return {"current_node": "faq", "last_question": None, "awaiting_response": False}
+
+    # --- Tratamento da escolha de especialista ---
     if last_question == "faq_specialist_choice":
         try:
             return await _handle_specialist_choice(state)
@@ -85,11 +104,7 @@ async def faq_node(state: AgentState) -> dict:
                 await send_whatsapp_message(phone, TECHNICAL_ERROR_MESSAGE)
             except Exception:
                 pass
-            return {
-                "current_node": "faq",
-                "last_question": state.get("last_question"),
-                "awaiting_response": False,
-            }
+            return {"current_node": "faq", "last_question": None, "awaiting_response": False}
 
     # --- Fluxo normal de FAQ ---
     try:
@@ -132,7 +147,6 @@ async def _faq_node_impl(state: AgentState) -> dict:
     if answer.strip() == _SEM_INFORMACAO:
         logger.info("FAQ | Sem informação disponível — oferecendo especialista | phone=%s", phone)
 
-        # Salva estado para tratamento na próxima mensagem
         tags["_faq_original_lq"] = last_question
         tags["_faq_unanswered_q"] = question[:500]
 
@@ -154,27 +168,89 @@ async def _faq_node_impl(state: AgentState) -> dict:
     has_active_flow = any(last_question.startswith(p) for p in _FLOW_QUESTION_PREFIXES)
 
     if has_active_flow:
-        # Re-pergunta diretamente a questão do fluxo onde parou
-        flow_question = _get_prev_bot_message(state.get("messages") or [])
+        # Salva estado para o handler do clarity check
+        # _faq_flow_question: última AIMessage = questão do fluxo que precisamos re-perguntar
+        ai_msgs = [m for m in (state.get("messages") or []) if isinstance(m, AIMessage) and m.content]
+        flow_question = str(ai_msgs[-1].content).strip() if ai_msgs else None
+
+        tags["_faq_original_lq"] = last_question
+        tags["_faq_answered_q"] = question[:500]
         if flow_question:
-            reask_msg = flow_question
-        else:
-            pending_topic = get_pending_topic(last_question)
-            reask_msg = f"Estava te perguntando sobre *{pending_topic}*."
-        logger.info(
-            "FAQ | Fluxo ativo — re-perguntando (last_question=%r) | phone=%s",
-            last_question,
-            phone,
-        )
-        await send_whatsapp_message(phone, reask_msg)
+            tags["_faq_flow_question"] = flow_question
+
+        logger.info("FAQ | Fluxo ativo — aguardando confirmação de dúvida | phone=%s", phone)
+        await send_whatsapp_message(phone, _CLARITY_CHECK_MSG)
+
+        return {
+            "current_node": "faq",
+            "last_question": "faq_clarity_check",
+            "awaiting_response": True,
+            "tags": tags,
+            "reask_count": 0,
+            "messages": [AIMessage(content=answer)],
+        }
 
     return {
         "current_node": "faq",
-        "last_question": last_question,  # preserva para retorno ao fluxo
-        "awaiting_response": has_active_flow,
+        "last_question": last_question,
+        "awaiting_response": False,
         "reask_count": 0,
         "messages": [AIMessage(content=answer)],
     }
+
+
+async def _handle_clarity_check(state: AgentState) -> dict:
+    """Processa a resposta do lead à pergunta de confirmação de dúvida (1 ou 2)."""
+    phone = state["phone"]
+    current_message = state.get("current_message", "")
+    tags = dict(state.get("tags") or {})
+
+    original_lq = tags.pop("_faq_original_lq", None) or ""
+    flow_question = tags.pop("_faq_flow_question", None)
+    answered_q = tags.pop("_faq_answered_q", "Dúvida não registrada")
+
+    logger.info(
+        "FAQ | Clarity check | phone=%s | msg=%r | original_lq=%r",
+        phone, current_message[:80], original_lq,
+    )
+
+    msg_clean = current_message.strip()
+    is_no = bool(_NO_RE.search(msg_clean))
+    is_yes = bool(_YES_RE.search(msg_clean)) and not is_no
+
+    # Ambíguo → assume dúvida esclarecida (segue o fluxo)
+    doubt_cleared = is_yes or not is_no
+
+    if doubt_cleared:
+        # Dúvida esclarecida → re-pergunta a questão do fluxo original
+        reask_msg = flow_question or f"Podemos continuar? Estava te perguntando sobre *{get_pending_topic(original_lq)}*."
+        await send_whatsapp_message(phone, reask_msg)
+        logger.info("FAQ | Dúvida esclarecida — re-perguntando fluxo | phone=%s", phone)
+
+        return {
+            "current_node": "faq",
+            "last_question": original_lq or None,
+            "awaiting_response": True,
+            "tags": tags,
+            "reask_count": 0,
+            "messages": [AIMessage(content=reask_msg)],
+        }
+    else:
+        # Ainda tem dúvidas → oferece especialista
+        tags["_faq_original_lq"] = original_lq
+        tags["_faq_unanswered_q"] = answered_q
+
+        await send_whatsapp_message(phone, _SPECIALIST_CHOICE_MSG)
+        logger.info("FAQ | Ainda tem dúvidas — oferecendo especialista | phone=%s", phone)
+
+        return {
+            "current_node": "faq",
+            "last_question": "faq_specialist_choice",
+            "awaiting_response": True,
+            "tags": tags,
+            "reask_count": 0,
+            "messages": [AIMessage(content=_SPECIALIST_CHOICE_MSG)],
+        }
 
 
 async def _handle_specialist_choice(state: AgentState) -> dict:
@@ -183,7 +259,6 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
     current_message = state.get("current_message", "")
     tags = dict(state.get("tags") or {})
 
-    # Recupera estado salvo antes da pergunta
     original_lq = tags.pop("_faq_original_lq", None) or ""
     unanswered_q = tags.pop("_faq_unanswered_q", "Dúvida não registrada")
 
@@ -194,29 +269,19 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
 
     has_active_flow = any(original_lq.startswith(p) for p in _FLOW_QUESTION_PREFIXES)
 
-    # Detecta intenção: quer especialista ou continuar?
     msg_clean = current_message.strip()
     is_no = bool(_NO_RE.search(msg_clean))
     is_yes = bool(_YES_RE.search(msg_clean)) and not is_no
 
-    # Ambíguo → padrão: especialista (mais proativo para o negócio)
     wants_specialist = is_yes or not is_no
 
     if wants_specialist:
-        # Envia notificação ao corretor/especialista
         await _send_specialist_notification(phone, state, unanswered_q)
-
-        # Confirma ao lead
         await send_whatsapp_message(phone, _SPECIALIST_CONFIRMED_MSG)
 
-        # Se há fluxo ativo: re-faz a pergunta real do histórico (mesma lógica do NO path)
         if has_active_flow:
-            flow_question = _get_prev_bot_message(state.get("messages") or [])
-            if flow_question:
-                reask_msg = flow_question
-            else:
-                pending_topic = get_pending_topic(original_lq)
-                reask_msg = f"Estava te perguntando sobre *{pending_topic}*."
+            flow_question = tags.pop("_faq_flow_question", None)
+            reask_msg = flow_question or f"Estava te perguntando sobre *{get_pending_topic(original_lq)}*."
             await send_whatsapp_message(phone, reask_msg)
 
         return {
@@ -228,18 +293,11 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
             "messages": [AIMessage(content=_SPECIALIST_CONFIRMED_MSG)],
         }
     else:
-        # Lead prefere continuar — re-faz a pergunta do fluxo diretamente
         await send_whatsapp_message(phone, _CONTINUE_MSG)
 
         if has_active_flow:
-            # Busca a pergunta real do fluxo no histórico (penúltima AIMessage —
-            # a última é a do FAQ specialist choice)
-            flow_question = _get_prev_bot_message(state.get("messages") or [])
-            if flow_question:
-                reply = flow_question
-            else:
-                pending_topic = get_pending_topic(original_lq)
-                reply = f"Estava te perguntando sobre *{pending_topic}*."
+            flow_question = tags.pop("_faq_flow_question", None)
+            reply = flow_question or f"Estava te perguntando sobre *{get_pending_topic(original_lq)}*."
         else:
             reply = "Pode falar — o que mais posso te ajudar?"
 
@@ -256,9 +314,7 @@ async def _handle_specialist_choice(state: AgentState) -> dict:
 
 
 def _get_prev_bot_message(messages: list) -> str | None:
-    """Retorna a penúltima AIMessage do histórico (a última é a do FAQ specialist choice).
-    Usada para re-perguntar a questão do fluxo quando o lead opta por continuar.
-    """
+    """Retorna a penúltima AIMessage do histórico."""
     ai_msgs = [m for m in messages if isinstance(m, AIMessage) and m.content]
     if len(ai_msgs) >= 2:
         return str(ai_msgs[-2].content).strip()
