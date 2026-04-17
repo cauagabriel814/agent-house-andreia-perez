@@ -62,8 +62,12 @@ async def handle_incoming_message(payload: dict):
     raw_payload = payload.get("raw_payload", {})
     utm_source = payload.get("utm_source")
 
+    # Garante que content seja sempre str ou None (UAZAPI pode enviar dict para midia)
+    if isinstance(content, dict):
+        content = None
+
     # Comando #reset: limpa todos os dados do lead e responde
-    if content and content.strip().lower() == "#reset":
+    if isinstance(content, str) and content.strip().lower() == "#reset":
         logger.info("DISPATCHER | Comando #reset | phone=%s", phone)
         removed = await _reset_lead(phone)
         if removed:

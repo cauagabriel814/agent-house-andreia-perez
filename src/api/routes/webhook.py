@@ -61,8 +61,9 @@ def _map_uazapi_message(msg: dict) -> tuple[str, str | None, str | None, str | N
     raw_type = (msg.get("messageType") or "").lower()
     msg_type = _UAZAPI_TYPE_MAP.get(raw_type, "text")
 
-    # Conteudo textual
-    content = msg.get("text") or msg.get("content") or msg.get("caption") or None
+    # Conteudo textual (garante que seja string; UAZAPI pode enviar dict para campos de midia)
+    _raw_content = msg.get("text") or msg.get("content") or msg.get("caption")
+    content = _raw_content if isinstance(_raw_content, str) else None
 
     # Mimetype
     media_mimetype = msg.get("mediaType") or msg.get("mimetype") or None
