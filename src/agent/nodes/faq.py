@@ -154,18 +154,19 @@ async def _faq_node_impl(state: AgentState) -> dict:
     has_active_flow = any(last_question.startswith(p) for p in _FLOW_QUESTION_PREFIXES)
 
     if has_active_flow:
-        pending_topic = get_pending_topic(last_question)
-        confirmation_msg = (
-            f"Consegui esclarecer sua dúvida? 😊 "
-            f"Quando estiver pronto, podemos continuar de onde paramos — "
-            f"estava te perguntando sobre *{pending_topic}*."
-        )
+        # Re-pergunta diretamente a questão do fluxo onde parou
+        flow_question = _get_prev_bot_message(state.get("messages") or [])
+        if flow_question:
+            reask_msg = flow_question
+        else:
+            pending_topic = get_pending_topic(last_question)
+            reask_msg = f"Estava te perguntando sobre *{pending_topic}*."
         logger.info(
-            "FAQ | Fluxo ativo detectado (last_question=%r) - solicitando confirmação | phone=%s",
+            "FAQ | Fluxo ativo — re-perguntando (last_question=%r) | phone=%s",
             last_question,
             phone,
         )
-        await send_whatsapp_message(phone, confirmation_msg)
+        await send_whatsapp_message(phone, reask_msg)
 
     return {
         "current_node": "faq",
