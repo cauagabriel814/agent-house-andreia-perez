@@ -325,6 +325,7 @@ async def _send_specialist_notification(phone: str, state: AgentState, unanswere
     """Envia email ao corretor sobre dúvida que o FAQ não pôde responder."""
     try:
         from src.services.email_service import EmailService
+        from src.services.kommo_service import KommoService
         service = EmailService()
         lead_name = state.get("lead_name") or ""
         result = await service.send_faq_specialist_notification(
@@ -341,6 +342,31 @@ async def _send_specialist_notification(phone: str, state: AgentState, unanswere
             )
     except Exception as exc:
         logger.warning("FAQ | Falha ao enviar notificação de especialista | phone=%s | erro=%s", phone, str(exc))
+
+    # Adiciona nota no Kommo com resumo do lead
+    try:
+        from src.services.kommo_service import KommoService
+        kommo_lead_id = state.get("kommo_lead_id")
+        if kommo_lead_id:
+            tags = dict(state.get("tags") or {})
+            total_score = state.get("total_score")
+            lead_name = state.get("lead_name") or tags.get("lead_identificado", "")
+            nota = (
+                f"❓ FAQ - ESPECIALISTA SOLICITADO\n"
+                f"Nome: {lead_name or 'Não informado'}\n"
+                f"Tel: {phone}\n"
+                f"Email: {tags.get('email_lead') or 'Não informado'}\n"
+                f"Score: {total_score if total_score is not None else 'Não calculado'}\n"
+                f"Interesse: {tags.get('lead_tipo_imovel') or 'Não informado'}\n"
+                f"Região: {tags.get('localizacao') or 'Não informado'}\n"
+                f"Budget: {tags.get('faixa_valor') or 'Não informado'}\n"
+                f"Visita: {tags.get('data_visita') or 'Não agendada'}\n"
+                f"Dúvida: {unanswered_question[:300]}"
+            )
+            await KommoService().add_note_to_lead(kommo_lead_id, nota)
+            logger.info("FAQ | Nota adicionada no Kommo | phone=%s", phone)
+    except Exception as exc:
+        logger.warning("FAQ | Falha ao adicionar nota no Kommo | phone=%s | erro=%s", phone, str(exc))
 
 
 async def _generate_answer(question: str, context: str) -> str:
