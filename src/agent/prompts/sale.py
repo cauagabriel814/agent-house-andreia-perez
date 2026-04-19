@@ -43,3 +43,9 @@ SALE_ENCERRAMENTO_SEM_VISITA = (
     "é só me chamar aqui. Nossos especialistas estarão disponíveis para te ajudar "
     "a obter o melhor resultado na venda do seu imóvel. Até logo!"
 )
+
+SALE_FORA_AREA = (
+    "Entendi! Infelizmente, nossa atuação é exclusiva em Cuiabá e região metropolitana "
+    "em Mato Grosso. Não temos estrutura para comercializar imóveis em outras cidades no momento.\n\n"
+    "Caso você tenha interesse em imóveis em Cuiabá, será um prazer te ajudar! 😊"
+)

@@ -19,6 +19,7 @@ from src.agent.prompts.sale import (
     SALE_ASK_SUITES,
     SALE_ENCERRAMENTO_AGENDAMENTO,
     SALE_ENCERRAMENTO_SEM_VISITA,
+    SALE_FORA_AREA,
     SALE_INITIAL,
     SALE_PROPOSTA_VISITA,
 )
@@ -57,6 +58,15 @@ _VALOR_ABAIXO_400K_PROMPT = (
     "Mensagem: {message}"
 )
 
+_FORA_CUIABA_PROMPT = (
+    "O imovel esta localizado em Cuiaba/MT ou na regiao metropolitana de Cuiaba "
+    "(Varzea Grande, Santo Antonio do Leverger, Chapada dos Guimaraes, Nossa Senhora do Livramento, etc.)? "
+    "Responda 'nao' se for qualquer outra cidade ou estado. "
+    "Responda 'sim' se for Cuiaba ou regiao metropolitana listada acima. "
+    "Responda apenas 'sim' ou 'nao'.\n\n"
+    "Regiao/cidade mencionada: {regiao}"
+)
+
 
 async def _extract_field(message: str, field: str) -> str:
     """Usa LLM para extrair um campo especifico da resposta do lead."""
@@ -82,6 +92,21 @@ async def _lead_wants_visit(message: str) -> bool:
     prompt = _WANTS_VISIT_PROMPT.format(message=message)
     response = await llm.ainvoke(prompt)
     return response.content.strip().lower().startswith("sim")
+
+
+async def _is_outside_cuiaba(regiao: str) -> bool:
+    """Retorna True se a região mencionada for fora de Cuiabá/MT e região metropolitana."""
+    if not regiao or regiao.strip().lower() in ("nao informado", "nao_informado"):
+        return False
+    llm = ChatOpenAI(
+        model="gpt-5.4",
+        temperature=0,
+        api_key=settings.openai_api_key,
+        timeout=20,
+    )
+    prompt = _FORA_CUIABA_PROMPT.format(regiao=regiao)
+    response = await llm.ainvoke(prompt)
+    return response.content.strip().lower().startswith("nao")
 
 
 async def _save_tag(lead_id: str | uuid.UUID | None, tags: dict, key: str, value: str) -> dict:
@@ -211,6 +236,26 @@ async def _sale_node_impl(state: AgentState) -> dict:
             regiao_init = "nao informado"
 
         if regiao_init != "nao informado":
+            # Verificar se o imovel esta fora da area de atuacao (Cuiaba/MT)
+            if await _is_outside_cuiaba(regiao_init):
+                logger.info(
+                    "SALE | Imovel fora de Cuiaba/MT: regiao=%r | encerrando fluxo | phone=%s",
+                    regiao_init, phone,
+                )
+                tags = await _save_tag(lead_id, tags, "localizacao_imovel_venda", regiao_init)
+                tags = await _save_tag(lead_id, tags, "lead_fora_area", "true")
+                await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+                await send_whatsapp_message(phone, SALE_FORA_AREA)
+                return {
+                    "current_node": "sale",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": False,
+                    "last_question": None,
+                    "reask_count": 0,
+                    "messages": [AIMessage(content=SALE_FORA_AREA)],
+                }
             tags = await _save_tag(lead_id, tags, "localizacao_imovel_venda", regiao_init)
 
         # Envia as mensagens de saudação (sem a pergunta de região)
@@ -271,6 +316,27 @@ async def _sale_node_impl(state: AgentState) -> dict:
             regiao = "nao informado"
         elif _is_missing(regiao):
             regiao = "nao informado"
+
+        # Verificar se o imovel esta fora da area de atuacao (Cuiaba/MT)
+        if regiao != "nao informado" and await _is_outside_cuiaba(regiao):
+            logger.info(
+                "SALE | Imovel fora de Cuiaba/MT: regiao=%r | encerrando fluxo | phone=%s",
+                regiao, phone,
+            )
+            tags = await _save_tag(lead_id, tags, "localizacao_imovel_venda", regiao)
+            tags = await _save_tag(lead_id, tags, "lead_fora_area", "true")
+            await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+            await send_whatsapp_message(phone, SALE_FORA_AREA)
+            return {
+                "current_node": "sale",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": False,
+                "last_question": None,
+                "reask_count": 0,
+                "messages": [AIMessage(content=SALE_FORA_AREA)],
+            }
 
         tags = await _save_tag(lead_id, tags, "localizacao_imovel_venda", regiao)
 
