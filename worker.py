@@ -13,10 +13,12 @@ webhooks e publicar mensagens na fila — sem processamento de agente.
 """
 
 import asyncio
+import os
 
 # Logger PRIMEIRO — configura niveis antes de qualquer outro import
 from src.utils.logger import logger  # noqa: E402
 
+from src.config.settings import settings
 from src.jobs.scheduler import start_scheduler, stop_scheduler
 from src.knowledge.ingest import ensure_knowledge_loaded
 from src.queue.connection import close_rabbitmq_connection, setup_queues
@@ -26,6 +28,18 @@ from src.queue.dispatcher import handle_incoming_message
 
 async def main() -> None:
     logger.info("WORKER | Iniciando...")
+
+    # --- LangSmith: ativar tracing via variaveis de ambiente ---
+    if settings.langchain_tracing_v2 and settings.langchain_api_key:
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
+        os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+        logger.info(
+            "WORKER | LangSmith tracing ativado | project=%s", settings.langchain_project
+        )
+    else:
+        os.environ["LANGCHAIN_TRACING_V2"] = "false"
+        logger.info("WORKER | LangSmith tracing desativado (LANGCHAIN_API_KEY nao configurado)")
 
     await ensure_knowledge_loaded()
 

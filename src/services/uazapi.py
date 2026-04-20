@@ -103,7 +103,12 @@ class UazapiService:
                 response.raise_for_status()
                 data = response.json()
 
-                b64 = data.get("base64") or data.get("data") or data.get("file")
+                b64 = (
+                    data.get("base64Data")
+                    or data.get("base64")
+                    or data.get("data")
+                    or data.get("file")
+                )
                 mimetype = data.get("mimetype") or data.get("mediaType") or data.get("mime")
 
                 if b64:
@@ -115,6 +120,30 @@ class UazapiService:
                         mimetype,
                     )
                     return media_bytes, mimetype
+
+                # Fallback: tentar download pela fileURL se disponível
+                file_url = data.get("fileURL") or data.get("url") or data.get("file_url")
+                if file_url:
+                    logger.info(
+                        "UAZAPI | base64 vazio, tentando download via fileURL | messageId=%s",
+                        message_id,
+                    )
+                    try:
+                        dl_response = await client.get(file_url, timeout=30.0)
+                        dl_response.raise_for_status()
+                        media_bytes = dl_response.content
+                        logger.info(
+                            "UAZAPI | Media baixada via fileURL | messageId=%s | bytes=%d",
+                            message_id,
+                            len(media_bytes),
+                        )
+                        return media_bytes, mimetype
+                    except Exception as exc:
+                        logger.warning(
+                            "UAZAPI | Falha no download via fileURL | messageId=%s | erro=%s",
+                            message_id,
+                            exc,
+                        )
 
                 logger.warning(
                     "UAZAPI | download_media_by_id: resposta sem base64 | messageId=%s | keys=%s",
