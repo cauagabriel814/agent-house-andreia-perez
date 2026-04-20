@@ -49,6 +49,9 @@ from src.utils.logger import logger
 
 _EXTRACTION_PROMPT = (
     "Extraia o(a) {field} da seguinte mensagem do lead de forma concisa. "
+    "A mensagem pode ser transcrição de áudio: pode conter linguagem falada informal, "
+    "ausência de pontuação, valores por extenso (ex: 'quinhentos mil' = R$500.000, "
+    "'dois quartos' = 2 quartos, 'cem metros' = 100m²). Interprete com tolerância. "
     "Responda apenas com o valor extraido, sem explicacoes adicionais. "
     "Se a mensagem for uma pergunta, assunto completamente diferente, texto sem sentido, "
     "palavra aleatoria ou resposta claramente irrelevante para o campo solicitado, "

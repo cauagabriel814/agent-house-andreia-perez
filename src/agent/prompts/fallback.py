@@ -16,6 +16,9 @@ import re
 # Detecção de pedido de esclarecimento (sem LLM — rápido e sem custo)
 # ---------------------------------------------------------------------------
 
+# Regex de clarificação: a mensagem deve COMEÇAR com um dos padrões abaixo,
+# mas pode ter conteúdo extra depois (comum em áudios transcritos, ex:
+# "Não entendi o que você quis dizer com isso" ainda é uma clarificação).
 _CLARIFICATION_RE = re.compile(
     r"^(como assim|o que quer dizer|o que significa|o que [eé] isso|o que seria isso|"
     r"n[aã]o entendi|n[aã]o entendo|n[aã]o t[oô] entendendo|n[aã]o entendi nada|n[aã]o t[oô] entendendo nada|"
@@ -25,7 +28,9 @@ _CLARIFICATION_RE = re.compile(
     r"o que isso|que isso|"
     r"n[aã]o ficou claro|ficou confuso|"
     r"t[oô] confuso|estou confus[ao]|"
-    r"n[aã]o t[oô] acompanhando|n[aã]o acompanhei)[\s?!.]*$",
+    r"n[aã]o t[oô] acompanhando|n[aã]o acompanhei|"
+    r"n[aã]o (fui |consegui )?(entender|compreender)|"
+    r"fiquei confus[ao]|que pergunta [eé] essa|que [eé] essa pergunta)",
     re.IGNORECASE,
 )
 

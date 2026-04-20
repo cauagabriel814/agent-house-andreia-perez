@@ -39,12 +39,22 @@ async def process_audio(
     extension = _mime_to_extension(effective_mimetype)
     filename = f"audio{extension}"
 
+    # Prompt de contexto guia o Whisper a reconhecer melhor termos imobiliários,
+    # bairros de Cuiabá/MT e padrões de fala informal em português brasileiro.
+    _WHISPER_CONTEXT_PROMPT = (
+        "Imóvel, Cuiabá, Mato Grosso, Várzea Grande, condomínio, suíte, suítes, cobertura, "
+        "apartamento, casa, terreno, permuta, locação, financiamento, avaliação, exclusividade, "
+        "Jardim das Américas, Coxipó, Goiabeiras, CPA, Bandeirantes, Duque de Caxias, "
+        "Boa Esperança, Morada da Serra, Araés, Quilombo, Bairro Popular, Santa Rosa, "
+        "lançamento, empreendimento, corretor, imobiliária, vistoria, escritura, ITBI, CRECI."
+    )
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
             "https://api.openai.com/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {settings.openai_api_key}"},
             files={"file": (filename, audio_bytes, effective_mimetype)},
-            data={"model": "whisper-1", "language": "pt"},
+            data={"model": "whisper-1", "language": "pt", "prompt": _WHISPER_CONTEXT_PROMPT},
         )
         response.raise_for_status()
         result = response.json()
