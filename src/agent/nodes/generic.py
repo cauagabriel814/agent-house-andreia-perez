@@ -5,7 +5,6 @@ from src.agent.prompts.active_listen import INTENT_CLASSIFICATION_PROMPT
 from src.agent.prompts.fallback import TECHNICAL_ERROR_MESSAGE
 from src.agent.prompts.generic import (
     GENERIC_EXPLANATION,
-    GENERIC_GIVE_UP,
     GENERIC_RE_CLARIFY,
 )
 from src.agent.state import AgentState
@@ -152,19 +151,17 @@ async def _generic_node_impl(state: AgentState) -> dict:
             "last_question": None,
         }
 
-    # Ainda generico apos re-clarificacao: encerrar graciosamente
+    # Ainda generico apos re-clarificacao: acionar agente de fallback com IA
     if last_question == "generic_re_clarify":
         logger.info(
-            "GENERIC | Intencao nao identificada apos duas tentativas - encerrando | phone=%s",
+            "GENERIC | Intencao nao identificada apos duas tentativas - acionando ai_fallback | phone=%s",
             phone,
         )
-        await send_whatsapp_message(phone, GENERIC_GIVE_UP)
         return {
-            "current_node": "",
+            "current_node": "generic",
             "awaiting_response": False,
             "detected_intent": "generico",
-            "last_question": None,
-            "messages": [AIMessage(content=GENERIC_GIVE_UP)],
+            "last_question": "generic_give_up",
         }
 
     # Segunda tentativa: enviar pergunta de clarificacao binaria

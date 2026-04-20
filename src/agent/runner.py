@@ -185,6 +185,7 @@ async def run_agent(
             "last_question": persisted.get("last_question"),
             "timeout_count": 0,
             "reask_count": persisted.get("reask_count", 0),
+            "ai_fallback_count": persisted.get("ai_fallback_count", 0),
             # Metadados
             "business_hours": True,  # verificado dentro do greeting_node (Feature 7)
             "utm_source": utm_source or lead.utm_source,

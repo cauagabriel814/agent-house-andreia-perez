@@ -42,6 +42,7 @@ class AgentState(TypedDict):
     last_question: Optional[str]
     timeout_count: int
     reask_count: int  # vezes que re-perguntamos a etapa atual; reset a 0 quando resposta válida
+    ai_fallback_count: int  # vezes que o ai_fallback foi acionado
 
     # Pós-encerramento
     is_silenced: bool  # True quando fluxo terminou e corretor ja foi avisado

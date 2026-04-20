@@ -1,12 +1,13 @@
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from src.agent.edges.conditions import route_after_generic, route_after_greeting, route_by_intent, route_entry, route_to_faq_or_end
+from src.agent.edges.conditions import route_after_ai_fallback, route_after_generic, route_after_greeting, route_by_intent, route_entry, route_to_faq_or_end
 from src.agent.nodes.active_listen import active_listen_node
 from src.agent.nodes.buyer import buyer_node
 from src.agent.nodes.completed import completed_node
 from src.agent.nodes.exchange import exchange_node
 from src.agent.nodes.generic import generic_node
+from src.agent.nodes.human_fallback import human_fallback_node
 from src.agent.nodes.greeting import greeting_node
 from src.agent.nodes.investor import investor_node
 from src.agent.nodes.launch import launch_node
@@ -24,6 +25,7 @@ _ENTRY_ROUTES = {
     "active_listen": "active_listen",
     "router": "router",
     "generic": "generic",
+    "ai_fallback": "ai_fallback",
     "faq": "faq",
     "sale": "sale",
     "rental": "rental",
@@ -61,6 +63,18 @@ _GENERIC_ROUTES = {
     "investor": "investor",
     "exchange": "exchange",
     "specific": "specific",
+    "ai_fallback": "ai_fallback",
+}
+
+# Destinos possiveis apos ai_fallback
+_AI_FALLBACK_ROUTES = {
+    "end": END,
+    "sale": "sale",
+    "rental": "rental",
+    "investor": "investor",
+    "exchange": "exchange",
+    "specific": "specific",
+    "completed": "completed",
 }
 
 
@@ -87,6 +101,7 @@ def build_graph() -> CompiledStateGraph:
     graph.add_node("active_listen", active_listen_node)
     graph.add_node("router", router_node)
     graph.add_node("generic", generic_node)
+    graph.add_node("ai_fallback", human_fallback_node)
     graph.add_node("sale", sale_node)
     graph.add_node("rental", rental_node)
     graph.add_node("investor", investor_node)
@@ -114,6 +129,9 @@ def build_graph() -> CompiledStateGraph:
 
     # Generic roteia para fluxo correto apos re-classificar intencao (Feature 9)
     graph.add_conditional_edges("generic", route_after_generic, _GENERIC_ROUTES)
+
+    # AI Fallback: agente IA humano para contextos nao resolvidos pelo generic
+    graph.add_conditional_edges("ai_fallback", route_after_ai_fallback, _AI_FALLBACK_ROUTES)
 
     # Destinos possíveis para flow nodes que podem desviar para FAQ
     _FLOW_OR_FAQ = {"faq": "faq", "end": END}

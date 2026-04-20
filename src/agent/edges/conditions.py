@@ -12,7 +12,7 @@ _INTENT_KEYWORDS = {
 }
 
 # Nodes de fluxo - continuam processando mensagens dentro do mesmo fluxo
-_FLOW_NODES = {"generic", "sale", "rental", "investor", "exchange", "specific", "buyer", "launch"}
+_FLOW_NODES = {"generic", "sale", "rental", "investor", "exchange", "specific", "buyer", "launch", "ai_fallback"}
 
 # Nodes que apos responder voltam para active_listen (nao continuam no mesmo fluxo)
 _TRANSIENT_NODES = {"faq"}
@@ -171,12 +171,43 @@ def route_after_generic(state: AgentState) -> str:
     Funcao condicional: decide o destino apos o node generic.
 
     - awaiting_response=True (enviou explicacao ou re-clarificacao) -> END
+    - last_question == "generic_give_up" -> ai_fallback (agente IA humano)
     - intencao identificada (venda/locacao/etc) -> fluxo correspondente
     - ainda generico ou encerramento -> END
     """
     awaiting = state.get("awaiting_response", False)
     if awaiting:
         return "end"
+
+    if state.get("last_question") == "generic_give_up":
+        return "ai_fallback"
+
+    intent = state.get("detected_intent", "generico")
+    intent_map = {
+        "venda": "sale",
+        "locacao": "rental",
+        "investidor": "investor",
+        "permuta": "exchange",
+        "interesse_especifico": "specific",
+    }
+    return intent_map.get(intent, "end")
+
+
+def route_after_ai_fallback(state: AgentState) -> str:
+    """
+    Funcao condicional: decide o destino apos o node ai_fallback.
+
+    - awaiting_response=True (aguardando resposta do lead) -> END
+    - current_node == "completed" (escalada para especialista) -> completed
+    - intencao identificada -> fluxo correspondente
+    - sem intencao -> END
+    """
+    awaiting = state.get("awaiting_response", False)
+    if awaiting:
+        return "end"
+
+    if state.get("current_node") == "completed":
+        return "completed"
 
     intent = state.get("detected_intent", "generico")
     intent_map = {
