@@ -693,6 +693,85 @@ async def _buyer_node_impl(state: AgentState) -> dict:
         tags = await _save_tag(lead_id, tags, "situacao_imovel", tipo)
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
 
+        # Pular BUYER_ASK_TICKET se faixa_valor já foi capturado proativamente
+        if _tag_collected(tags, "faixa_valor"):
+            logger.info(
+                "BUYER | Faixa já conhecida (%r) -> pulando BUYER_ASK_TICKET | phone=%s",
+                tags["faixa_valor"], phone,
+            )
+            abaixo_400k = await _check_bool(_TICKET_PROMPT, tags["faixa_valor"])
+
+            if abaixo_400k:
+                nome_display = lead_name or tags.get("lead_identificado", "")
+                tags = await _save_tag(lead_id, tags, "lead_fora_perfil", "true")
+                nome_prefix = f"{nome_display}, " if nome_display else ""
+                msg = BUYER_FORA_PERFIL.format(nome=nome_prefix)
+                await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+                await send_whatsapp_message(phone, msg)
+                logger.info("BUYER | Lead fora perfil via faixa proativa | phone=%s", phone)
+                return {
+                    "current_node": "buyer",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": "buyer_fora_perfil_resp",
+                    "messages": [AIMessage(content=msg)],
+                }
+
+            if tipo == "pronto":
+                if lead_name and not _tag_collected(tags, "lead_identificado"):
+                    tags = await _save_tag(lead_id, tags, "lead_identificado", lead_name)
+                if not tags.get("lead_imovel_especifico"):
+                    tags = await _save_tag(lead_id, tags, "lead_imovel_especifico", "true")
+                await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+                next_q, next_msg = await _advance_pronto_qualification(phone, tags)
+                if next_q is None:
+                    next_q = "buyer_pronto_prioridades"
+                    next_msg = PRONTO_ASK_PRIORIDADES
+                    await send_whatsapp_message(phone, next_msg)
+                    logger.info("BUYER | Todos os dados já coletados -> score direto | phone=%s", phone)
+                return {
+                    "current_node": "buyer",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": next_q,
+                    "reask_count": 0,
+                    "messages": [AIMessage(content=next_msg)],
+                }
+
+            # Lançamento
+            imovel_especifico = tags.get("lead_imovel_especifico")
+            interesse_especifico = bool(
+                imovel_especifico and imovel_especifico not in ("true", "nao informado")
+            )
+            if interesse_especifico:
+                msg = LAUNCH_ASK_NOME.format(empreendimento=imovel_especifico)
+                await send_whatsapp_message(phone, msg)
+                return {
+                    "current_node": "launch",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": None,
+                    "reask_count": 0,
+                    "messages": [AIMessage(content=msg)],
+                }
+            await send_whatsapp_message(phone, BUYER_ASK_PREFERENCIAS)
+            return {
+                "current_node": "buyer",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "buyer_pronto_estilo",
+                "reask_count": 0,
+                "messages": [AIMessage(content=BUYER_ASK_PREFERENCIAS)],
+            }
+
         logger.info("BUYER | Tipo=%r -> perguntando ticket | phone=%s", tipo, phone)
         await send_whatsapp_message(phone, BUYER_ASK_TICKET)
         return {
@@ -1250,13 +1329,62 @@ async def _buyer_node_impl(state: AgentState) -> dict:
                     total_score,
                 )
 
-        # Todos os leads (quente/morno/frio) recebem apresentação de imóveis
-        msg = PRONTO_APRESENTAR.format(nome=nome_display or "voce")
+        # Extração proativa de região/suítes da mensagem de prioridades (evita re-pergunta)
+        if not _tag_collected(tags, "localizacao"):
+            regiao_preview = await _extract_field(
+                effective_message, "região ou bairro preferido em Cuiabá"
+            )
+            if not _is_off_topic(regiao_preview) and not _is_missing(regiao_preview):
+                tags = await _save_tag(lead_id, tags, "localizacao", regiao_preview)
+                logger.info(
+                    "BUYER | Região extraída proativamente: %r | phone=%s", regiao_preview, phone
+                )
+
+        if not _tag_collected(tags, "suites_interesse"):
+            suites_preview = await _extract_field(
+                effective_message, "quantidade de suítes desejadas"
+            )
+            if not _is_off_topic(suites_preview) and not _is_missing(suites_preview):
+                tags = await _save_tag(lead_id, tags, "suites_interesse", suites_preview)
+                logger.info(
+                    "BUYER | Suítes extraídas proativamente: %r | phone=%s", suites_preview, phone
+                )
+
+        # Enviar mensagem de apresentação adequada conforme dados já coletados
+        tem_regiao = _tag_collected(tags, "localizacao")
+        tem_suites = _tag_collected(tags, "suites_interesse")
+
+        if tem_regiao and tem_suites:
+            # Ambos já conhecidos → pular etapa de preferências e ir direto à visita
+            logger.info(
+                "BUYER | Região e suítes já conhecidas -> pulando PRONTO_APRESENTAR | phone=%s", phone
+            )
+            msg = PRONTO_APRESENTAR_DETALHES
+            next_lq = "buyer_pronto_visita"
+        elif tem_regiao:
+            msg = (
+                f"Entendido! E quantas suítes você precisa, {nome_display}?"
+                if nome_display
+                else "E quantas suítes você precisa?"
+            )
+            next_lq = "buyer_pronto_preferencias"
+        elif tem_suites:
+            msg = (
+                f"{nome_display}, qual região de Cuiabá você prefere?"
+                if nome_display
+                else "Qual região de Cuiabá você prefere?"
+            )
+            next_lq = "buyer_pronto_preferencias"
+        else:
+            msg = PRONTO_APRESENTAR.format(nome=nome_display or "voce")
+            next_lq = "buyer_pronto_preferencias"
+
         await send_whatsapp_message(phone, msg)
         return {
             **base_state,
+            "tags": tags,
             "awaiting_response": True,
-            "last_question": "buyer_pronto_preferencias",
+            "last_question": next_lq,
             "messages": [AIMessage(content=msg)],
         }
 
@@ -1410,6 +1538,77 @@ async def _buyer_node_impl(state: AgentState) -> dict:
 
         if quer_visita:
             logger.info("BUYER | Lead quer visitar | phone=%s", phone)
+
+            # Verificar se o lead já forneceu data/horário na mesma mensagem (evitar re-pergunta)
+            vague_resp_v = await llm.ainvoke(_VAGUE_DATE_PROMPT.format(message=effective_message))
+            vague_day_v = vague_resp_v.content.strip().lower().rstrip(".")
+
+            if vague_day_v in _WEEKDAY_MAP:
+                # Lead informou dia da semana junto com a confirmação → mostrar 3 opções
+                weekday_num = _WEEKDAY_MAP[vague_day_v]
+                d1, d2, d3 = _next_three_weekdays(weekday_num)
+                day_label = _WEEKDAY_DISPLAY.get(vague_day_v, vague_day_v.capitalize())
+                msg = (
+                    f"Qual das próximas {day_label}s fica melhor para você?\n\n"
+                    f"• {day_label} {d1}\n"
+                    f"• {day_label} {d2}\n"
+                    f"• {day_label} {d3}"
+                )
+                # Preservar horário caso já tenha sido mencionado junto com o dia
+                if _has_time_info(effective_message):
+                    hora_info = await _extract_field(
+                        effective_message,
+                        "horário ou período do dia informado (ex: 10h, 14h30, manhã, tarde)",
+                    )
+                    if not _is_off_topic(hora_info) and not _is_missing(hora_info):
+                        tags["_visita_hora_parcial"] = hora_info
+                logger.info(
+                    "BUYER | Lead forneceu dia vago (%s) na confirmação de visita -> 3 próximas | phone=%s",
+                    vague_day_v, phone,
+                )
+                await send_whatsapp_message(phone, msg)
+                return {
+                    "current_node": "buyer",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": "buyer_pronto_data_confirm",
+                    "reask_count": 0,
+                    "messages": [AIMessage(content=msg)],
+                }
+
+            # Tentar extrair data específica da mensagem de confirmação
+            data_antecipada = await _extract_field(
+                effective_message,
+                f"data da visita no formato dd/mm (hoje é {_get_today_str()}; "
+                "se o lead disse 'amanhã', 'hoje' ou expressão relativa, converta para dd/mm); "
+                "inclua o horário se mencionado (ex: '23/04', '23/04 às 14h')",
+            )
+            if not _is_off_topic(data_antecipada) and not _is_missing(data_antecipada):
+                logger.info(
+                    "BUYER | Lead forneceu data (%r) na confirmação de visita -> processando direto | phone=%s",
+                    data_antecipada, phone,
+                )
+                if not _has_time_info(data_antecipada):
+                    tags["_visita_data_parcial"] = data_antecipada
+                    msg_hora = "Ótimo! E qual horário fica melhor para você? (ex: 10h, 14h, manhã ou tarde)"
+                    await send_whatsapp_message(phone, msg_hora)
+                    return {
+                        "current_node": "buyer",
+                        "tags": tags,
+                        "kommo_contact_id": kommo_contact_id,
+                        "kommo_lead_id": kommo_lead_id,
+                        "awaiting_response": True,
+                        "last_question": "buyer_pronto_horario",
+                        "reask_count": 0,
+                        "messages": [AIMessage(content=msg_hora)],
+                    }
+                return await _finalize_visit_scheduling(
+                    phone, lead_id, lead_name, tags, kommo, kommo_lead_id, kommo_contact_id, data_antecipada
+                )
+
+            # Sem data identificada na mensagem → perguntar normalmente
             await send_whatsapp_message(phone, PRONTO_AGENDAR_VISITA)
             return {
                 "current_node": "buyer",
@@ -1511,6 +1710,15 @@ async def _buyer_node_impl(state: AgentState) -> dict:
             "se o lead disse 'amanhã', 'hoje' ou expressão relativa, converta para dd/mm); "
             "inclua o horário se mencionado (ex: '23/04', '23/04 às 14h')",
         )
+
+        # Recuperar horário salvo quando lead informou dia vago com hora na etapa anterior
+        hora_parcial = tags.pop("_visita_hora_parcial", None)
+        if hora_parcial and not _has_time_info(data_horario):
+            data_horario = f"{data_horario} às {hora_parcial}"
+            logger.info(
+                "BUYER | Horario parcial (%r) combinado com data confirmada (%r) | phone=%s",
+                hora_parcial, data_horario, phone,
+            )
 
         if not _has_time_info(data_horario):
             tags["_visita_data_parcial"] = data_horario

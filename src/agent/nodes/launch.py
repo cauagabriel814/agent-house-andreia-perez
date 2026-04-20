@@ -571,18 +571,58 @@ async def _launch_node_impl(state: AgentState) -> dict:
         )
 
         nome_display = lead_name or tags.get("lead_identificado", "") or "voce"
-        msg = LAUNCH_ASK_PAGAMENTO.format(nome=nome_display)
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
-        await send_whatsapp_message(phone, msg)
+
+        # Look-ahead: verificar se pagamento foi fornecido na mesma mensagem
+        _pag = tags.get("forma_pagamento_lancamento", "")
+        if not (_pag and _pag.lower() not in ("nao informado", "nao_informado")):
+            pag_preview = await _extract_field(
+                effective_message, "forma de pagamento (a vista, FGTS, parcelas, financiamento)"
+            )
+            if not _is_off_topic(pag_preview) and not _is_missing(pag_preview):
+                tags = await _save_tag(lead_id, tags, "forma_pagamento_lancamento", pag_preview)
+                logger.info(
+                    "LAUNCH | Pagamento extraído proativamente: %r | phone=%s", pag_preview, phone
+                )
+                _pag = pag_preview
+
+        pag_conhecido = bool(_pag) and _pag.lower() not in ("nao informado", "nao_informado")
+
+        if pag_conhecido:
+            # Pagamento já coletado → look-ahead para urgência
+            _urg = tags.get("urgencia_lancamento", "")
+            if not (_urg and _urg.lower() not in ("nao informado", "nao_informado")):
+                urg_preview = await _extract_field(
+                    effective_message, "prazo ou urgência para fechar o negócio"
+                )
+                if not _is_off_topic(urg_preview) and not _is_missing(urg_preview):
+                    tags = await _save_tag(lead_id, tags, "urgencia_lancamento", urg_preview)
+                    logger.info(
+                        "LAUNCH | Urgência extraída proativamente: %r | phone=%s", urg_preview, phone
+                    )
+                    _urg = urg_preview
+
+            urg_conhecido = bool(_urg) and _urg.lower() not in ("nao informado", "nao_informado")
+            if urg_conhecido:
+                msg_next = LAUNCH_ASK_CONTATO.format(nome=nome_display)
+                next_lq = "launch_contato"
+            else:
+                msg_next = LAUNCH_ASK_URGENCIA
+                next_lq = "launch_urgencia"
+        else:
+            msg_next = LAUNCH_ASK_PAGAMENTO.format(nome=nome_display)
+            next_lq = "launch_pagamento"
+
+        await send_whatsapp_message(phone, msg_next)
         return {
             "current_node": "launch",
             "tags": tags,
             "kommo_contact_id": kommo_contact_id,
             "kommo_lead_id": kommo_lead_id,
             "awaiting_response": True,
-            "last_question": "launch_pagamento",
+            "last_question": next_lq,
             "reask_count": 0,
-            "messages": [AIMessage(content=msg)],
+            "messages": [AIMessage(content=msg_next)],
         }
 
     # -----------------------------------------------------------------------
@@ -620,16 +660,42 @@ async def _launch_node_impl(state: AgentState) -> dict:
         )
 
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
-        await send_whatsapp_message(phone, LAUNCH_ASK_URGENCIA)
+
+        # Look-ahead: verificar se urgência já veio na mesma mensagem de pagamento
+        _urg = tags.get("urgencia_lancamento", "")
+        if not (_urg and _urg.lower() not in ("nao informado", "nao_informado")):
+            urg_preview = await _extract_field(
+                effective_message,
+                "prazo ou urgência para fechar o negócio (ex: '3 meses', 'urgente', 'sem pressa')",
+            )
+            if not _is_off_topic(urg_preview) and not _is_missing(urg_preview):
+                tags = await _save_tag(lead_id, tags, "urgencia_lancamento", urg_preview)
+                logger.info(
+                    "LAUNCH | Urgência extraída proativamente da msg de pagamento: %r | phone=%s",
+                    urg_preview,
+                    phone,
+                )
+                _urg = urg_preview
+
+        urg_conhecido = bool(_urg) and _urg.lower() not in ("nao informado", "nao_informado")
+        nome_display = lead_name or tags.get("lead_identificado", "") or "voce"
+        if urg_conhecido:
+            msg_next = LAUNCH_ASK_CONTATO.format(nome=nome_display)
+            next_lq = "launch_contato"
+        else:
+            msg_next = LAUNCH_ASK_URGENCIA
+            next_lq = "launch_urgencia"
+
+        await send_whatsapp_message(phone, msg_next)
         return {
             "current_node": "launch",
             "tags": tags,
             "kommo_contact_id": kommo_contact_id,
             "kommo_lead_id": kommo_lead_id,
             "awaiting_response": True,
-            "last_question": "launch_urgencia",
+            "last_question": next_lq,
             "reask_count": 0,
-            "messages": [AIMessage(content=LAUNCH_ASK_URGENCIA)],
+            "messages": [AIMessage(content=msg_next)],
         }
 
     # -----------------------------------------------------------------------
