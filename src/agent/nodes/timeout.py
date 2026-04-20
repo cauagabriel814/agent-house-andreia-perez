@@ -2,8 +2,8 @@ from datetime import timedelta
 
 from langchain_core.messages import AIMessage
 
-from src.agent.prompts.fallback import TECHNICAL_ERROR_MESSAGE
-from src.agent.prompts.reengagement import TIMEOUT_MESSAGE
+from src.agent.prompts.fallback import TECHNICAL_ERROR_MESSAGE, build_smart_timeout_message
+from src.agent.prompts.fallback import get_last_bot_message
 from src.agent.state import AgentState
 from src.agent.tools.uazapi import send_whatsapp_message
 from src.db.database import async_session
@@ -52,12 +52,14 @@ async def _timeout_node_impl(state: AgentState) -> dict:
     kommo_lead_id = state.get("kommo_lead_id")
 
     kommo = KommoService()
+    last_question = state.get("last_question")
+    last_bot_message = get_last_bot_message(state.get("messages") or [])
 
     # ------------------------------------------------------------------
     # Primeiro timeout (5 min) - sinaliza que o lead parou de responder
     # ------------------------------------------------------------------
     if timeout_count == 0:
-        msg = TIMEOUT_MESSAGE.format(name=lead_name)
+        msg = await build_smart_timeout_message(lead_name, last_question, last_bot_message)
         logger.info("TIMEOUT | Primeiro timeout (5min) | phone=%s | lead_id=%s", phone, lead_id)
         await send_whatsapp_message(phone, msg)
 

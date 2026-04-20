@@ -276,7 +276,7 @@ from src.config.settings import settings  # noqa: E402
 
 # Prompt usado quando temos o texto exato da última mensagem do agente.
 # O LLM analisa o contexto real e explica a pergunta ao lead.
-_OFFTOPIC_PROMPT_WITH_CONTEXT = """Você é a Marina, assistente da Casa Andreia Perez (imobiliária de alto padrão em Cuiabá-MT).
+_OFFTOPIC_PROMPT_WITH_CONTEXT = """Você é a Andreia, assistente da Residere (imobiliária de alto padrão em Cuiabá-MT).
 
 Estamos em uma conversa de qualificação imobiliária. O agente acabou de fazer esta pergunta ao lead:
 "{last_bot_message}"
@@ -293,7 +293,7 @@ IMPORTANTE:
 - Não use markdown nem asteriscos."""
 
 # Prompt de fallback usado quando não temos o texto da última mensagem.
-_OFFTOPIC_PROMPT_FALLBACK = """Você é a Marina, assistente da Casa Andreia Perez (imobiliária de alto padrão em Cuiabá-MT).
+_OFFTOPIC_PROMPT_FALLBACK = """Você é a Andreia, assistente da Residere (imobiliária de alto padrão em Cuiabá-MT).
 
 O lead está em um fluxo de qualificação e pediu esclarecimento ou foi off-topic. O tópico pendente é: {pending_topic}
 
@@ -354,3 +354,66 @@ async def build_smart_redirect(
         logger.warning("OFFTOPIC | LLM falhou, usando fallback seco | erro=%s", str(exc))
 
     return build_redirect_message(last_question)
+
+
+# ---------------------------------------------------------------------------
+# Timeout inteligente: retoma a conversa de onde parou
+# ---------------------------------------------------------------------------
+
+_TIMEOUT_SMART_PROMPT = """Você é a Andreia, assistente da Residere (imobiliária de alto padrão em Cuiabá-MT).
+
+Você estava qualificando um lead que parou de responder. Precisa retomar a conversa de onde parou.
+
+Nome do lead: {lead_name}
+Última pergunta feita ao lead: {last_bot_message}
+Assunto pendente: {pending_topic}
+
+Escreva uma mensagem curta e natural para retomar a conversa. A mensagem deve:
+- Referenciar o assunto que estava sendo tratado (não seja genérico)
+- Relançar a pergunta pendente de forma suave, com outras palavras se possível
+- Ser acolhedora e sem pressão
+
+IMPORTANTE:
+- Não diga frases como "quando quiser voltar é só me chamar" — queremos continuar agora
+- Não inicie com saudações isoladas como "Oi!" — vá direto ao ponto
+- Responda em português brasileiro, tom informal
+- Máximo 3 linhas, sem markdown nem asteriscos"""
+
+
+async def build_smart_timeout_message(
+    lead_name: str,
+    last_question: str | None,
+    last_bot_message: str | None,
+) -> str:
+    """
+    Gera mensagem de follow-up contextual para reengajar lead inativo.
+
+    Usa o histórico da última pergunta feita para retomar de onde parou,
+    em vez de enviar uma mensagem genérica fixa.
+    Fallback: mensagem simples baseada no tópico pendente.
+    """
+    name_display = lead_name or "você"
+    pending = get_pending_topic(last_question)
+    last_msg = last_bot_message or f"sua resposta sobre {pending}"
+
+    try:
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.4,
+            api_key=settings.openai_api_key,
+            timeout=15,
+        )
+        prompt = _TIMEOUT_SMART_PROMPT.format(
+            lead_name=name_display,
+            last_bot_message=last_msg[:400],
+            pending_topic=pending,
+        )
+        response = await llm.ainvoke(prompt)
+        text = (response.content or "").strip()
+        if text:
+            return text
+    except Exception as exc:
+        from src.utils.logger import logger
+        logger.warning("TIMEOUT_SMART | LLM falhou, usando fallback | erro=%s", str(exc))
+
+    return f"{name_display}, ainda está por aqui? Precisava da sua resposta sobre {pending}."
