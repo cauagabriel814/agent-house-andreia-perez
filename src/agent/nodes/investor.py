@@ -1842,7 +1842,36 @@ async def _investor_node_impl(state: AgentState) -> dict:
                 "messages": [AIMessage(content=INVESTOR_MORNO_ASK_EMAIL)],
             }
 
-        # whatsapp ou indefinido -> perguntar se e o mesmo numero
+        # whatsapp ou indefinido -> verificar se e o proprio numero ou outro
+        eh_numero_atual = await _check_bool(
+            "O lead está confirmando que quer receber neste mesmo número de WhatsApp "
+            "(ex: 'por este', 'aqui mesmo', 'pode mandar aqui', 'esse número', 'sim', 'pode')? "
+            "Responda 'sim' se está confirmando o número atual, 'nao' se mencionou um número diferente.",
+            effective_message,
+        )
+        if eh_numero_atual:
+            # Lead quer receber no próprio numero -> pular INVESTOR_MORNO_ASK_WHATS
+            tags = await _save_tag(lead_id, tags, "contato_adicional", phone)
+            tags = await _save_tag(lead_id, tags, "contato_coletado", "true")
+            logger.info("INVESTOR | WhatsApp=proprio numero (%r) | phone=%s", phone, phone)
+            await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+            stage_id = settings.kommo_stage_map_dict.get("follow_up_programado")
+            if stage_id and kommo_lead_id:
+                await kommo.update_lead_stage(kommo_lead_id, stage_id)
+            await _notify_corretor_morno(phone, tags, total_score, kommo_lead_id=kommo_lead_id)
+            await send_whatsapp_message(phone, INVESTOR_MORNO_CONSULTORIA)
+            return {
+                "current_node": "investor",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "investor_morno_consultoria_resp",
+                "reask_count": 0,
+                "messages": [AIMessage(content=INVESTOR_MORNO_CONSULTORIA)],
+            }
+
+        # Lead quer usar outro numero -> perguntar qual
         await send_whatsapp_message(phone, INVESTOR_MORNO_ASK_WHATS)
         return {
             "current_node": "investor",
@@ -1932,15 +1961,26 @@ async def _investor_node_impl(state: AgentState) -> dict:
     # Etapa 7e: Lead MORNO - resposta da consultoria → encerrar fluxo
     # -----------------------------------------------------------------------
     if last_question == "investor_morno_consultoria_resp":
-        logger.info("INVESTOR | Encerrando fluxo morno | phone=%s", phone)
+        logger.info("INVESTOR | Classificando resposta de consultoria (morno) | phone=%s", phone)
 
-        tags = await _save_tag(lead_id, tags, "consultoria_agendada", "true")
-        await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
-
-        msg_encerramento = (
-            "Nosso consultor já recebeu suas informações e vai entrar em contato "
-            "para confirmar tudo. Até logo! 😊"
+        aceitou_consultoria = await _check_bool(
+            "O lead aceitou agendar uma conversa/consultoria com o especialista? "
+            "Palavras como 'sim', 'pode ser', 'quero', 'claro', 'ok', 'tudo bem' = True. "
+            "Palavras como 'não', 'nao', 'obrigado mas não', 'dispenso', 'não preciso' = False.",
+            effective_message,
         )
+
+        if aceitou_consultoria:
+            tags = await _save_tag(lead_id, tags, "consultoria_agendada", "true")
+            msg_encerramento = (
+                "Nosso consultor já recebeu suas informações e vai entrar em contato "
+                "para confirmar tudo. Até logo! 😊"
+            )
+        else:
+            tags = await _save_tag(lead_id, tags, "consultoria_recusada", "true")
+            msg_encerramento = INVESTOR_MORNO_DICA_VIP
+
+        await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
         await send_whatsapp_message(phone, msg_encerramento)
         return {
             "current_node": "investor",
