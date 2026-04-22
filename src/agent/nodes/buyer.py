@@ -754,7 +754,17 @@ async def _buyer_node_impl(state: AgentState) -> dict:
                 imovel_especifico and imovel_especifico not in ("true", "nao informado")
             )
             if interesse_especifico:
-                msg = LAUNCH_ASK_NOME.format(empreendimento=imovel_especifico)
+                _nome_tag = tags.get("lead_identificado", "").strip()
+                _nome_j_conhecido = bool(_nome_tag) and _nome_tag.lower() not in ("nao informado", "nao_informado", "true")
+                if _nome_j_conhecido:
+                    # Nome já fornecido -> não perguntar novamente
+                    logger.info(
+                        "BUYER | Nome já conhecido (%r) -> pulando LAUNCH_ASK_NOME | phone=%s",
+                        _nome_tag, phone,
+                    )
+                    msg = f"Perfeito, {_nome_tag}! 😊 Deixa eu te apresentar o empreendimento."
+                else:
+                    msg = LAUNCH_ASK_NOME.format(empreendimento=imovel_especifico)
                 await send_whatsapp_message(phone, msg)
                 return {
                     "current_node": "launch",
@@ -881,7 +891,16 @@ async def _buyer_node_impl(state: AgentState) -> dict:
                 imovel_especifico,
                 phone,
             )
-            msg = LAUNCH_ASK_NOME.format(empreendimento=imovel_especifico)
+            _nome_tag = tags.get("lead_identificado", "").strip()
+            _nome_j_conhecido = bool(_nome_tag) and _nome_tag.lower() not in ("nao informado", "nao_informado", "true")
+            if _nome_j_conhecido:
+                logger.info(
+                    "BUYER | Nome já conhecido (%r) -> pulando LAUNCH_ASK_NOME | phone=%s",
+                    _nome_tag, phone,
+                )
+                msg = f"Perfeito, {_nome_tag}! 😊 Deixa eu te apresentar o empreendimento."
+            else:
+                msg = LAUNCH_ASK_NOME.format(empreendimento=imovel_especifico)
             await send_whatsapp_message(phone, msg)
             return {
                 "current_node": "launch",

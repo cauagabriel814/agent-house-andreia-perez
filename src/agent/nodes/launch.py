@@ -424,10 +424,16 @@ async def _launch_node_impl(state: AgentState) -> dict:
     if last_question is None:
         logger.info("LAUNCH | Capturando nome | phone=%s", phone)
 
-        nome = await _extract_field(
-            effective_message, "nome ou como o lead quer ser chamado"
-        )
-        nome_exibir = nome if nome != "nao informado" else (lead_name or "")
+        _nome_tag = tags.get("lead_identificado", "").strip()
+        _nome_valido = bool(_nome_tag) and _nome_tag.lower() not in ("nao informado", "nao_informado", "true")
+        if _nome_valido:
+            nome_exibir = _nome_tag
+            logger.info("LAUNCH | Nome já nas tags (%r) -> pulando extração | phone=%s", nome_exibir, phone)
+        else:
+            nome = await _extract_field(
+                effective_message, "nome ou como o lead quer ser chamado"
+            )
+            nome_exibir = nome if nome != "nao informado" else (lead_name or "")
 
         tags = await _save_tag(
             lead_id, tags, "lead_lancamento_identificado", nome_exibir or "true"
