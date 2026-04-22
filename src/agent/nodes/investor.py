@@ -875,6 +875,25 @@ async def _investor_node_impl(state: AgentState) -> dict:
                 tags["faixa_valor"],
                 phone,
             )
+            _nec_tag = tags.get("necessidades", tags.get("prioridades", "")).strip().lower()
+            _nec_conhecida = bool(_nec_tag) and _nec_tag not in ("nao informado", "nao_informado")
+            if _nec_conhecida:
+                logger.info(
+                    "INVESTOR | Necessidades já conhecidas -> pulando INVESTOR_ASK_NECESSIDADES | phone=%s",
+                    phone,
+                )
+                await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+                await asyncio.sleep(15)
+                await send_whatsapp_message(phone, INVESTOR_ASK_VAGAS)
+                return {
+                    "current_node": "investor",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": "investor_vagas",
+                    "messages": [AIMessage(content=INVESTOR_ASK_VAGAS)],
+                }
             await send_whatsapp_message(phone, INVESTOR_ASK_NECESSIDADES)
             return {
                 "current_node": "investor",
@@ -916,6 +935,24 @@ async def _investor_node_impl(state: AgentState) -> dict:
         logger.info("INVESTOR | Investimento=%r | phone=%s", investimento, phone)
 
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+        _nec_tag = tags.get("necessidades", tags.get("prioridades", "")).strip().lower()
+        _nec_conhecida = bool(_nec_tag) and _nec_tag not in ("nao informado", "nao_informado")
+        if _nec_conhecida:
+            logger.info(
+                "INVESTOR | Necessidades já conhecidas -> pulando INVESTOR_ASK_NECESSIDADES | phone=%s",
+                phone,
+            )
+            await asyncio.sleep(15)
+            await send_whatsapp_message(phone, INVESTOR_ASK_VAGAS)
+            return {
+                "current_node": "investor",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "investor_vagas",
+                "messages": [AIMessage(content=INVESTOR_ASK_VAGAS)],
+            }
         await send_whatsapp_message(phone, INVESTOR_ASK_NECESSIDADES)
         return {
             "current_node": "investor",
