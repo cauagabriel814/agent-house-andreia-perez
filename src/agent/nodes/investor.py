@@ -123,6 +123,16 @@ from src.utils.context_extractor import extract_context_from_message
 from src.utils.logger import logger
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _tag_known(tags: dict, key: str) -> bool:
+    """Retorna True se a tag já foi coletada com valor válido."""
+    v = tags.get(key, "").strip().lower()
+    return bool(v) and v not in ("nao informado", "nao_informado")
+
+
+# ---------------------------------------------------------------------------
 # Prompts para o LLM (extracao e classificacao)
 # ---------------------------------------------------------------------------
 
@@ -748,9 +758,33 @@ async def _investor_node_impl(state: AgentState) -> dict:
 
         logger.info("INVESTOR | Tipo=%r | phone=%s", tipo, phone)
 
-        # Pausa natural antes de perguntar o nome
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+
+        # Pula INVESTOR_ASK_NOME se lead_identificado já é conhecido
+        _nome_tag = tags.get("lead_identificado", "").strip().lower()
+        _nome_conhecido = bool(_nome_tag) and _nome_tag not in ("nao informado", "nao_informado")
         await asyncio.sleep(5)
+        if _nome_conhecido:
+            nome_exibir = tags["lead_identificado"]
+            logger.info(
+                "INVESTOR | Nome já conhecido (%r) -> pulando INVESTOR_ASK_NOME | phone=%s",
+                nome_exibir,
+                phone,
+            )
+            msg = INVESTOR_ASK_REGIAO.format(nome=nome_exibir)
+            await send_whatsapp_message(phone, msg)
+            return {
+                "current_node": "investor",
+                "tags": tags,
+                "lead_name": nome_exibir,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "investor_regiao",
+                "reask_count": 0,
+                "messages": [AIMessage(content=msg)],
+            }
+
         await send_whatsapp_message(phone, INVESTOR_ASK_NOME)
         return {
             "current_node": "investor",
@@ -831,6 +865,27 @@ async def _investor_node_impl(state: AgentState) -> dict:
         nome_exibir = lead_name or tags.get("lead_identificado", "")
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
         await asyncio.sleep(5)
+
+        # Pula INVESTOR_ASK_INVESTIMENTO se faixa_valor já é conhecida
+        _faixa_tag = tags.get("faixa_valor", "").strip().lower()
+        _faixa_conhecida = bool(_faixa_tag) and _faixa_tag not in ("nao informado", "nao_informado")
+        if _faixa_conhecida:
+            logger.info(
+                "INVESTOR | Faixa já conhecida (%r) -> pulando INVESTOR_ASK_INVESTIMENTO | phone=%s",
+                tags["faixa_valor"],
+                phone,
+            )
+            await send_whatsapp_message(phone, INVESTOR_ASK_NECESSIDADES)
+            return {
+                "current_node": "investor",
+                "tags": tags,
+                "kommo_contact_id": kommo_contact_id,
+                "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True,
+                "last_question": "investor_necessidades",
+                "messages": [AIMessage(content=INVESTOR_ASK_NECESSIDADES)],
+            }
+
         msg = INVESTOR_ASK_INVESTIMENTO.format(nome=nome_exibir or "")
         await send_whatsapp_message(phone, msg)
         return {
@@ -913,6 +968,60 @@ async def _investor_node_impl(state: AgentState) -> dict:
         logger.info("INVESTOR | Vagas=%r | phone=%s", vagas, phone)
 
         await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+
+        # Pula INVESTOR_ASK_SITUACAO se situacao_imovel já é conhecida
+        if _tag_known(tags, "situacao_imovel"):
+            logger.info(
+                "INVESTOR | Situação já conhecida (%r) -> pulando INVESTOR_ASK_SITUACAO | phone=%s",
+                tags["situacao_imovel"], phone,
+            )
+            nome_exibir = lead_name or tags.get("lead_identificado", "") or ""
+            if tags.get("lead_permuta") == "true":
+                tags = await _save_tag(lead_id, tags, "forma_pagamento", "permuta")
+                await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+                msg = INVESTOR_ASK_PRAZO.format(nome=nome_exibir)
+                await send_whatsapp_message(phone, msg)
+                return {
+                    "current_node": "investor", "tags": tags,
+                    "kommo_contact_id": kommo_contact_id, "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True, "last_question": "investor_prazo",
+                    "messages": [AIMessage(content=msg)],
+                }
+            if not _tag_known(tags, "forma_pagamento"):
+                await asyncio.sleep(5)
+                await send_whatsapp_message(phone, INVESTOR_ASK_FINALIZACAO)
+                return {
+                    "current_node": "investor", "tags": tags,
+                    "kommo_contact_id": kommo_contact_id, "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True, "last_question": "investor_finalizacao",
+                    "messages": [AIMessage(content=INVESTOR_ASK_FINALIZACAO)],
+                }
+            logger.info(
+                "INVESTOR | Pagamento também conhecido (%r) -> pulando INVESTOR_ASK_FINALIZACAO | phone=%s",
+                tags["forma_pagamento"], phone,
+            )
+            if not _tag_known(tags, "urgencia"):
+                msg = INVESTOR_ASK_PRAZO.format(nome=nome_exibir)
+                await send_whatsapp_message(phone, msg)
+                return {
+                    "current_node": "investor", "tags": tags,
+                    "kommo_contact_id": kommo_contact_id, "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True, "last_question": "investor_prazo",
+                    "messages": [AIMessage(content=msg)],
+                }
+            logger.info(
+                "INVESTOR | Urgência também conhecida (%r) -> pulando INVESTOR_ASK_PRAZO | phone=%s",
+                tags["urgencia"], phone,
+            )
+            msg = INVESTOR_ASK_PRIORIDADES.format(nome=nome_exibir)
+            await send_whatsapp_message(phone, msg)
+            return {
+                "current_node": "investor", "tags": tags,
+                "kommo_contact_id": kommo_contact_id, "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True, "last_question": "investor_prioridades",
+                "messages": [AIMessage(content=msg)],
+            }
+
         await send_whatsapp_message(phone, INVESTOR_ASK_SITUACAO)
         return {
             "current_node": "investor",
@@ -961,6 +1070,36 @@ async def _investor_node_impl(state: AgentState) -> dict:
             }
 
         await asyncio.sleep(5)
+
+        # Pula INVESTOR_ASK_FINALIZACAO se forma_pagamento já é conhecida
+        if _tag_known(tags, "forma_pagamento"):
+            logger.info(
+                "INVESTOR | Pagamento já conhecido (%r) -> pulando INVESTOR_ASK_FINALIZACAO | phone=%s",
+                tags["forma_pagamento"], phone,
+            )
+            nome_exibir = lead_name or tags.get("lead_identificado", "") or ""
+            if not _tag_known(tags, "urgencia"):
+                msg = INVESTOR_ASK_PRAZO.format(nome=nome_exibir)
+                await send_whatsapp_message(phone, msg)
+                return {
+                    "current_node": "investor", "tags": tags,
+                    "kommo_contact_id": kommo_contact_id, "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True, "last_question": "investor_prazo",
+                    "messages": [AIMessage(content=msg)],
+                }
+            logger.info(
+                "INVESTOR | Urgência também conhecida (%r) -> pulando INVESTOR_ASK_PRAZO | phone=%s",
+                tags["urgencia"], phone,
+            )
+            msg = INVESTOR_ASK_PRIORIDADES.format(nome=nome_exibir)
+            await send_whatsapp_message(phone, msg)
+            return {
+                "current_node": "investor", "tags": tags,
+                "kommo_contact_id": kommo_contact_id, "kommo_lead_id": kommo_lead_id,
+                "awaiting_response": True, "last_question": "investor_prioridades",
+                "messages": [AIMessage(content=msg)],
+            }
+
         await send_whatsapp_message(phone, INVESTOR_ASK_FINALIZACAO)
         return {
             "current_node": "investor",

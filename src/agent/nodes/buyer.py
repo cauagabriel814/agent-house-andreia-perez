@@ -612,11 +612,17 @@ async def _buyer_node_impl(state: AgentState) -> dict:
     if last_question is None or last_question == "buyer_tipo_ask":
         logger.info("BUYER | Classificando tipo de imovel (lancamento/pronto) | phone=%s", phone)
 
-        llm = _get_llm()
-        tipo_resp = await llm.ainvoke(
-            _TIPO_IMOVEL_PROMPT.format(message=effective_message)
-        )
-        tipo = tipo_resp.content.strip().lower()
+        # Se situacao_imovel já é conhecida (extraída proativamente), pula classificação LLM
+        _sit_tag = tags.get("situacao_imovel", "").strip().lower()
+        if _sit_tag in ("lancamento", "pronto"):
+            tipo = _sit_tag
+            logger.info("BUYER | Tipo já conhecido (%r) via tags -> pulando LLM | phone=%s", tipo, phone)
+        else:
+            llm = _get_llm()
+            tipo_resp = await llm.ainvoke(
+                _TIPO_IMOVEL_PROMPT.format(message=effective_message)
+            )
+            tipo = tipo_resp.content.strip().lower()
 
         # Tipo indefinido: verificar se o lead forneceu budget em vez de tipo
         if tipo not in ("lancamento", "pronto"):

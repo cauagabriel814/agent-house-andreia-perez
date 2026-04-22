@@ -91,7 +91,13 @@ def route_entry(state: AgentState) -> str:
         return "active_listen"
 
     if current_node == "timeout":
-        return "greeting"  # reinicia apos timeout
+        # Se havia fluxo ativo, vai direto para o node correto sem passar pelo greeting
+        # (a resposta do lead deve ser processada pelo fluxo, não consumida pela saudação)
+        last_q = state.get("last_question") or ""
+        for prefix, node in _QUESTION_PREFIX_TO_NODE.items():
+            if last_q.startswith(prefix):
+                return node
+        return "greeting"  # sem fluxo ativo: reinicia com saudação
 
     return "greeting"
 
