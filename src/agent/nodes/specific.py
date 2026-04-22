@@ -421,27 +421,61 @@ async def _specific_node_impl(state: AgentState) -> dict:
         tipo = tipo_resp.content.strip().lower()
 
         if "especifico" in tipo:
-            # Lead viu anuncio especifico -> perguntar qual empreendimento
+            # Lead viu anuncio especifico
+            _emp_tag = tags.get("lead_imovel_especifico", "").strip()
+            _emp_conhecido = bool(_emp_tag) and _emp_tag.lower() not in ("nao informado", "nao_informado")
+            if _emp_conhecido:
+                # Empreendimento já conhecido via contexto -> saltar pergunta, ir direto para launch
+                logger.info(
+                    "SPECIFIC | Empreendimento já conhecido (%r) via tags | phone=%s",
+                    _emp_tag, phone,
+                )
+                tags = await _save_tag(lead_id, tags, "lead_imovel_especifico", _emp_tag)
+                tags = await _save_tag(lead_id, tags, "origem_campanha", _emp_tag)
+                tags = await _save_tag(lead_id, tags, "situacao_imovel", "lancamento")
+                await kommo.sync_tags(kommo_lead_id, kommo_contact_id, tags)
+                nome_emp = _emp_tag
+                launch_msg = LAUNCH_ASK_NOME.format(empreendimento=nome_emp)
+                await send_whatsapp_message(phone, launch_msg)
+                return {
+                    "current_node": "launch",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": None,
+                    "reask_count": 0,
+                    "messages": [AIMessage(content=launch_msg)],
+                }
+            else:
+                logger.info(
+                    "SPECIFIC | Interesse especifico -> perguntando empreendimento | phone=%s",
+                    phone,
+                )
+                await send_whatsapp_message(phone, SPECIFIC_ASK_EMPREENDIMENTO)
+                return {
+                    "current_node": "specific",
+                    "tags": tags,
+                    "awaiting_response": True,
+                    "last_question": "specific_empreendimento",
+                    "reask_count": 0,
+                    "messages": [AIMessage(content=SPECIFIC_ASK_EMPREENDIMENTO)],
+                }
+
+        # Busca geral -> perguntar lancamento ou pronto
+        _sit_tag = tags.get("situacao_imovel", "").strip().lower()
+        _sit_conhecida = _sit_tag in ("lancamento", "pronto")
+        if _sit_conhecida:
             logger.info(
-                "SPECIFIC | Interesse especifico -> perguntando empreendimento | phone=%s",
+                "SPECIFIC | situacao_imovel já conhecida (%r) via tags -> pulando BUYER_ASK_TIPO | phone=%s",
+                _sit_tag, phone,
+            )
+        else:
+            logger.info(
+                "SPECIFIC | Interesse geral -> perguntando tipo de imovel | phone=%s",
                 phone,
             )
-            await send_whatsapp_message(phone, SPECIFIC_ASK_EMPREENDIMENTO)
-            return {
-                "current_node": "specific",
-                "tags": tags,
-                "awaiting_response": True,
-                "last_question": "specific_empreendimento",
-                "reask_count": 0,
-                "messages": [AIMessage(content=SPECIFIC_ASK_EMPREENDIMENTO)],
-            }
-
-        # Busca geral -> perguntar lancamento ou pronto (sempre, para confirmacao explicita)
-        logger.info(
-            "SPECIFIC | Interesse geral -> perguntando tipo de imovel | phone=%s",
-            phone,
-        )
-        await send_whatsapp_message(phone, BUYER_ASK_TIPO)
+            await send_whatsapp_message(phone, BUYER_ASK_TIPO)
         return {
             "current_node": "buyer",
             "tags": tags,
