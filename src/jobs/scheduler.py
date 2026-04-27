@@ -23,8 +23,12 @@ Tipos de jobs suportados:
 import asyncio
 from datetime import timezone
 
+from sqlalchemy import select
+
 from src.agent.runner import run_agent_for_timeout
 from src.db.database import async_session
+from src.db.models.blocked_number import BlockedNumber
+from src.db.models.lead import Lead
 from src.db.models.scheduled_job import ScheduledJob
 from src.jobs.follow_up_48h import execute_follow_up_24h, execute_follow_up_48h
 from src.jobs.investor_nurture import (
@@ -88,6 +92,18 @@ async def _lead_responded_since_job(job: ScheduledJob) -> bool:
 # ---------------------------------------------------------------------------
 
 
+async def _lead_is_blocked(lead_id) -> bool:
+    """Retorna True se o numero do lead esta na blocklist."""
+    async with async_session() as session:
+        lead = await session.get(Lead, lead_id)
+        if not lead:
+            return False
+        result = await session.execute(
+            select(BlockedNumber).where(BlockedNumber.phone == lead.phone)
+        )
+        return result.scalar_one_or_none() is not None
+
+
 async def _execute_job(job: ScheduledJob) -> None:
     """
     Executa um job pelo tipo apos verificar se o lead nao respondeu.
@@ -112,6 +128,22 @@ async def _execute_job(job: ScheduledJob) -> None:
     except Exception:
         logger.exception(
             "SCHEDULER | Erro ao verificar resposta do lead | job_id=%s", job.id
+        )
+
+    # Verificar blocklist: lead pode ter tido intervencao humana apos agendamento
+    try:
+        if await _lead_is_blocked(lead_id):
+            logger.info(
+                "SCHEDULER | Job ignorado: lead na blocklist | "
+                "job_type=%s | lead_id=%s | job_id=%s",
+                job_type,
+                lead_id,
+                job.id,
+            )
+            return
+    except Exception:
+        logger.exception(
+            "SCHEDULER | Erro ao verificar blocklist | job_id=%s", job.id
         )
 
     logger.info(
