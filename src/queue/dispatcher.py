@@ -6,6 +6,7 @@ from src.agent.guardrails import INPUT_BLOCKED_MESSAGE, check_input
 from src.agent.runner import run_agent
 from src.agent.tools.uazapi import send_whatsapp_message
 from src.db.database import async_session
+from src.db.models.blocked_number import BlockedNumber
 from src.db.models.conversation import Conversation
 from src.db.models.lead import Lead
 from src.db.models.message import Message
@@ -61,6 +62,16 @@ async def handle_incoming_message(payload: dict):
     chat_id = payload.get("chat_id", "")
     raw_payload = payload.get("raw_payload", {})
     utm_source = payload.get("utm_source")
+
+    # Verifica blocklist antes de qualquer processamento
+    if phone:
+        async with async_session() as session:
+            result = await session.execute(
+                select(BlockedNumber).where(BlockedNumber.phone == phone)
+            )
+            if result.scalar_one_or_none():
+                logger.info("DISPATCHER | Numero bloqueado ignorado | phone=%s", phone)
+                return
 
     # Garante que content seja sempre str ou None (UAZAPI pode enviar dict para midia)
     if isinstance(content, dict):

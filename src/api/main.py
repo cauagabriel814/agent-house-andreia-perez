@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.utils.logger import logger  # noqa: E402
 
 from src.api.routes.auth import router as auth_router
+from src.api.routes.blocklist import router as blocklist_router
 from src.api.routes.chat import router as chat_router
 from src.api.routes.health import router as health_router
 from src.api.routes.metrics import router as metrics_router
@@ -75,3 +76,4 @@ app.include_router(metrics_router)
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(properties_admin_router)
+app.include_router(blocklist_router)

@@ -8,6 +8,7 @@ from src.db.models.notification import Notification
 from src.db.models.user import User
 from src.db.models.property import Property
 from src.db.models.knowledge import KnowledgeChunk
+from src.db.models.blocked_number import BlockedNumber
 
 __all__ = [
     "Base",
@@ -21,4 +22,5 @@ __all__ = [
     "User",
     "Property",
     "KnowledgeChunk",
+    "BlockedNumber",
 ]
