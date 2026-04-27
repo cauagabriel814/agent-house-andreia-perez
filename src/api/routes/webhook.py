@@ -2,8 +2,11 @@ import uuid  # noqa
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
+from sqlalchemy import select, text
 
 from src.api.middleware.auth import validate_webhook_token
+from src.db.database import async_session
+from src.db.models.blocked_number import BlockedNumber
 from src.queue.producer import publish_message
 from src.utils.logger import logger
 
@@ -129,8 +132,47 @@ async def receive_webhook(
     # UAZAPI: dados da mensagem ficam em 'message' (flat)
     msg = payload.get("message") or payload.get("data", {})
 
-    # Ignorar mensagens enviadas pelo proprio bot
+    # Mensagens enviadas pelo nosso numero (fromMe)
     if msg.get("fromMe", False):
+        # Verifica se foi o agente ou um humano que enviou
+        from_me_msg_id = (
+            msg.get("messageId")
+            or msg.get("id")
+            or msg.get("key", {}).get("id")
+            or None
+        )
+
+        if from_me_msg_id:
+            async with async_session() as session:
+                row = await session.execute(
+                    text("SELECT 1 FROM agent_sent_msg_ids WHERE msg_id = :mid"),
+                    {"mid": from_me_msg_id},
+                )
+                is_agent_message = row.scalar_one_or_none() is not None
+
+            if not is_agent_message:
+                # ID desconhecido: humano enviou manualmente → intervencao humana
+                lead_chatid = msg.get("chatid") or msg.get("sender_pn", "")
+                if not lead_chatid:
+                    lead_chatid = msg.get("key", {}).get("remoteJid", "")
+                lead_phone = _extract_phone(lead_chatid)
+
+                if lead_phone and "@g.us" not in lead_chatid:
+                    async with async_session() as session:
+                        existing = await session.execute(
+                            select(BlockedNumber).where(BlockedNumber.phone == lead_phone)
+                        )
+                        if not existing.scalar_one_or_none():
+                            session.add(BlockedNumber(
+                                phone=lead_phone,
+                                reason="intervencao_humana",
+                            ))
+                            await session.commit()
+                            logger.info(
+                                "WEBHOOK | Intervencao humana detectada — numero bloqueado | phone=%s",
+                                lead_phone,
+                            )
+
         return {"status": "ok", "ignored": "own_message"}
 
     # Extrair telefone: UAZAPI usa 'chatid' ou 'sender_pn'
