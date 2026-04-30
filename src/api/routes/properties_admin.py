@@ -12,12 +12,39 @@ DELETE /admin/properties/{id}             → deleta imovel
 """
 
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+# ------------------------------------------------------------------
+# Tipos enumerados (valores fixos aceitos pela API)
+# ------------------------------------------------------------------
+
+TipoImovel = Literal[
+    "Apartamento", "Casa", "Cobertura", "Duplex", "Triplex",
+    "Loft", "Studio", "Casa em Condomínio", "Sobrado",
+    "Terreno", "Loja", "Sala Comercial", "Galpão",
+]
+Situacao = Literal["Pronto para Morar", "Lançamento", "Em Construção", "Na Planta"]
+Finalidade = Literal["Venda", "Locação", "Venda e Locação"]
+Acabamento = Literal["Padrão", "Alto Padrão", "Luxo", "Ultra Luxo"]
+AceitaPermuta = Literal["Sim", "Não", "A Avaliar"]
+AceitaFinanciamento = Literal["Sim", "Não", "Apenas Caixa", "Todos os Bancos"]
+Disponivel = Literal["Sim", "Não", "Reservado", "Em Negociação"]
+Mobiliado = Literal["Sim", "Não", "Semi-mobiliado", "Sob Consulta"]
+Ocupacao = Literal["Vago", "Ocupado", "Ocupado pelo Proprietário", "Alugado"]
+Vista = Literal["Mar", "Cidade", "Montanha", "Parque", "Lago", "Rua", "Interna", "Panorâmica"]
+EstadoConservacao = Literal["Novo", "Excelente", "Bom", "Regular", "Precisa Reforma"]
+Escritura = Literal["Sim", "Não", "Em Processo"]
+Piscina = Literal["Sim", "Não", "Coletiva"]
+Churrasqueira = Literal["Sim", "Não", "Coletiva"]
+TipoPiso = Literal[
+    "Porcelanato", "Mármore", "Granito", "Madeira",
+    "Laminado", "Vinílico", "Carpete", "Cerâmica", "Misto",
+]
 
 from src.api.auth.dependencies import get_current_user
 from src.db.database import get_session
@@ -53,9 +80,9 @@ class PropertyOut(BaseModel):
     total_andares: Optional[int] = None
     elevadores: Optional[int] = None
     unidades_andar: Optional[int] = None
-    aceita_permuta: bool = False
-    aceita_financiamento: bool = True
-    disponivel: bool = True
+    aceita_permuta: Optional[str] = None
+    aceita_financiamento: Optional[str] = None
+    disponivel: Optional[str] = None
     lancamento: bool = False
     empreendimento: Optional[str] = None
     construtora: Optional[str] = None
@@ -68,15 +95,32 @@ class PropertyOut(BaseModel):
     observacoes: Optional[str] = None
     corretor_responsavel: Optional[str] = None
     tags: Optional[str] = None
+    mobiliado: Optional[str] = None
+    ocupacao: Optional[str] = None
+    vista: Optional[str] = None
+    estado_conservacao: Optional[str] = None
+    escritura: Optional[str] = None
+    piscina: Optional[str] = None
+    churrasqueira: Optional[str] = None
+    tipo_piso: Optional[str] = None
+    suite_master: Optional[bool] = None
+    closet: Optional[bool] = None
+    varanda_gourmet: Optional[bool] = None
+    sauna: Optional[bool] = None
+    elevador_privativo: Optional[bool] = None
+    sala_estar: Optional[bool] = None
+    sala_jantar: Optional[bool] = None
+    lavabo: Optional[bool] = None
+    deposito: Optional[bool] = None
 
     model_config = {"from_attributes": True}
 
 
 class PropertyCreate(BaseModel):
     codigo: str
-    tipo: Optional[str] = None
-    situacao: Optional[str] = None
-    finalidade: Optional[str] = None
+    tipo: Optional[TipoImovel] = None
+    situacao: Optional[Situacao] = None
+    finalidade: Optional[Finalidade] = None
     bairro: Optional[str] = None
     endereco: Optional[str] = None
     suites: Optional[int] = None
@@ -88,14 +132,14 @@ class PropertyCreate(BaseModel):
     condominio: Optional[float] = None
     iptu: Optional[float] = None
     diferenciais: Optional[str] = None
-    acabamento: Optional[str] = None
+    acabamento: Optional[Acabamento] = None
     andar: Optional[int] = None
     total_andares: Optional[int] = None
     elevadores: Optional[int] = None
     unidades_andar: Optional[int] = None
-    aceita_permuta: bool = False
-    aceita_financiamento: bool = True
-    disponivel: bool = True
+    aceita_permuta: Optional[AceitaPermuta] = None
+    aceita_financiamento: Optional[AceitaFinanciamento] = None
+    disponivel: Optional[Disponivel] = None
     lancamento: bool = False
     empreendimento: Optional[str] = None
     construtora: Optional[str] = None
@@ -108,12 +152,29 @@ class PropertyCreate(BaseModel):
     observacoes: Optional[str] = None
     corretor_responsavel: Optional[str] = None
     tags: Optional[str] = None
+    mobiliado: Optional[Mobiliado] = None
+    ocupacao: Optional[Ocupacao] = None
+    vista: Optional[Vista] = None
+    estado_conservacao: Optional[EstadoConservacao] = None
+    escritura: Optional[Escritura] = None
+    piscina: Optional[Piscina] = None
+    churrasqueira: Optional[Churrasqueira] = None
+    tipo_piso: Optional[TipoPiso] = None
+    suite_master: Optional[bool] = None
+    closet: Optional[bool] = None
+    varanda_gourmet: Optional[bool] = None
+    sauna: Optional[bool] = None
+    elevador_privativo: Optional[bool] = None
+    sala_estar: Optional[bool] = None
+    sala_jantar: Optional[bool] = None
+    lavabo: Optional[bool] = None
+    deposito: Optional[bool] = None
 
 
 class PropertyUpdate(BaseModel):
-    tipo: Optional[str] = None
-    situacao: Optional[str] = None
-    finalidade: Optional[str] = None
+    tipo: Optional[TipoImovel] = None
+    situacao: Optional[Situacao] = None
+    finalidade: Optional[Finalidade] = None
     bairro: Optional[str] = None
     endereco: Optional[str] = None
     suites: Optional[int] = None
@@ -125,14 +186,14 @@ class PropertyUpdate(BaseModel):
     condominio: Optional[float] = None
     iptu: Optional[float] = None
     diferenciais: Optional[str] = None
-    acabamento: Optional[str] = None
+    acabamento: Optional[Acabamento] = None
     andar: Optional[int] = None
     total_andares: Optional[int] = None
     elevadores: Optional[int] = None
     unidades_andar: Optional[int] = None
-    aceita_permuta: Optional[bool] = None
-    aceita_financiamento: Optional[bool] = None
-    disponivel: Optional[bool] = None
+    aceita_permuta: Optional[AceitaPermuta] = None
+    aceita_financiamento: Optional[AceitaFinanciamento] = None
+    disponivel: Optional[Disponivel] = None
     lancamento: Optional[bool] = None
     empreendimento: Optional[str] = None
     construtora: Optional[str] = None
@@ -145,6 +206,23 @@ class PropertyUpdate(BaseModel):
     observacoes: Optional[str] = None
     corretor_responsavel: Optional[str] = None
     tags: Optional[str] = None
+    mobiliado: Optional[Mobiliado] = None
+    ocupacao: Optional[Ocupacao] = None
+    vista: Optional[Vista] = None
+    estado_conservacao: Optional[EstadoConservacao] = None
+    escritura: Optional[Escritura] = None
+    piscina: Optional[Piscina] = None
+    churrasqueira: Optional[Churrasqueira] = None
+    tipo_piso: Optional[TipoPiso] = None
+    suite_master: Optional[bool] = None
+    closet: Optional[bool] = None
+    varanda_gourmet: Optional[bool] = None
+    sauna: Optional[bool] = None
+    elevador_privativo: Optional[bool] = None
+    sala_estar: Optional[bool] = None
+    sala_jantar: Optional[bool] = None
+    lavabo: Optional[bool] = None
+    deposito: Optional[bool] = None
 
 
 # ------------------------------------------------------------------
@@ -209,7 +287,7 @@ async def list_properties(
     bairro: str = Query("", description="Filtro por bairro (parcial)"),
     finalidade: str = Query("", description="Venda ou Locacao"),
     tipo: str = Query("", description="Tipo do imovel (parcial)"),
-    disponivel: Optional[bool] = Query(None, description="Filtrar por disponibilidade"),
+    disponivel: Optional[str] = Query(None, description="Filtrar por disponibilidade (Sim, Não, Reservado, Em Negociação)"),
     lancamento: Optional[bool] = Query(None, description="Filtrar lancamentos"),
     valor_max: Optional[float] = Query(None, description="Valor maximo"),
     session: AsyncSession = Depends(get_session),

@@ -37,6 +37,10 @@ _CSV_COLUMNS = [
     "valor", "condominio", "iptu", "diferenciais", "acabamento",
     "andar", "total_andares", "elevadores", "unidades_andar",
     "aceita_permuta", "aceita_financiamento", "disponivel", "lancamento",
+    "mobiliado", "ocupacao", "vista", "estado_conservacao", "escritura",
+    "piscina", "churrasqueira", "tipo_piso",
+    "suite_master", "closet", "varanda_gourmet", "sauna", "elevador_privativo",
+    "sala_estar", "sala_jantar", "lavabo", "deposito",
     "empreendimento", "construtora", "entrega",
     "fotos_url", "tour_360", "planta_url", "video_url",
     "descricao", "observacoes", "corretor_responsavel", "tags",
@@ -70,7 +74,7 @@ class PropertyService:
         bairro: str = "",
         finalidade: str = "",
         tipo: str = "",
-        disponivel: Optional[bool] = None,
+        disponivel: Optional[str] = None,
         lancamento: Optional[bool] = None,
         valor_max: Optional[float] = None,
     ) -> list[Property]:
@@ -83,7 +87,7 @@ class PropertyService:
         if tipo:
             stmt = stmt.where(Property.tipo.ilike(f"%{tipo}%"))
         if disponivel is not None:
-            stmt = stmt.where(Property.disponivel == disponivel)
+            stmt = stmt.where(Property.disponivel.ilike(f"%{disponivel}%"))
         if lancamento is not None:
             stmt = stmt.where(Property.lancamento == lancamento)
         if valor_max is not None:
@@ -134,9 +138,15 @@ class PropertyService:
         writer.writeheader()
         for p in props:
             row = {col: getattr(p, col, "") for col in _CSV_COLUMNS}
-            # Booleanos → Sim/Não
-            for bool_col in ("aceita_permuta", "aceita_financiamento", "disponivel", "lancamento"):
-                row[bool_col] = "Sim" if row[bool_col] else "Não"
+            # lancamento permanece booleano → Sim/Não
+            row["lancamento"] = "Sim" if row["lancamento"] else "Não"
+            # Campos booleanos de amenidades
+            for bool_col in (
+                "suite_master", "closet", "varanda_gourmet", "sauna",
+                "elevador_privativo", "sala_estar", "sala_jantar", "lavabo", "deposito",
+            ):
+                val = row[bool_col]
+                row[bool_col] = "Sim" if val else ("Não" if val is not None else "")
             writer.writerow(row)
         return output.getvalue()
 
@@ -180,7 +190,11 @@ class PropertyService:
             "elevadores", "unidades_andar",
         }
         float_fields = {"area_privativa", "area_total", "valor", "condominio", "iptu"}
-        bool_fields = {"aceita_permuta", "aceita_financiamento", "disponivel", "lancamento"}
+        bool_fields = {
+            "lancamento",
+            "suite_master", "closet", "varanda_gourmet", "sauna",
+            "elevador_privativo", "sala_estar", "sala_jantar", "lavabo", "deposito",
+        }
 
         for key, value in data.items():
             if key not in {col for col in _CSV_COLUMNS} | {"id", "created_at", "updated_at"}:
