@@ -28,6 +28,7 @@ from src.services.conversation_service import ConversationService
 from src.services.job_service import JobService
 from src.services.lead_service import LeadService
 from src.utils.logger import logger
+from src.utils.phone import phone_variants
 
 # Grafo compilado (singleton - criado uma unica vez ao importar o modulo)
 _graph = build_graph()
@@ -119,7 +120,15 @@ async def append_message_to_history(
             lead_svc = LeadService(session)
             conv_svc = ConversationService(session)
 
-            lead, _ = await lead_svc.get_or_create(phone, utm_source=utm_source)
+            # Busca lead por variantes do numero (com/sem nono digito) antes de criar
+            lead = None
+            for variant in phone_variants(phone):
+                lead = await lead_svc.get_by_phone(variant)
+                if lead:
+                    break
+            if not lead:
+                lead, _ = await lead_svc.get_or_create(phone, utm_source=utm_source)
+
             conv, _ = await conv_svc.get_or_create_active(lead.id)
 
             persisted: dict[str, Any] = conv.graph_state or {}
