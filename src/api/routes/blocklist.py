@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.agent.runner import append_message_to_history
+from src.agent.tools.uazapi import send_whatsapp_message
 from src.api.auth.dependencies import get_admin_user
 from src.db.database import get_session
 from src.db.models.blocked_number import BlockedNumber
@@ -40,6 +41,10 @@ class BlockedNumberOut(BaseModel):
 class BlockedNumberCreate(BaseModel):
     phone: str
     reason: Optional[str] = None
+
+
+class UnblockBody(BaseModel):
+    message: Optional[str] = None
 
 
 # ------------------------------------------------------------------
@@ -76,6 +81,7 @@ async def add_blocked(
 @router.delete("/{phone}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_blocked(
     phone: str,
+    body: UnblockBody = UnblockBody(),
     session: AsyncSession = Depends(get_session),
     _: User = Depends(get_admin_user),
 ):
@@ -86,13 +92,18 @@ async def remove_blocked(
     await session.delete(entry)
     await session.commit()
 
-    # Salva anotacao de sistema no historico da conversa (sem enviar ao WhatsApp)
-    await append_message_to_history(
-        phone=phone,
-        content=(
-            "[SISTEMA] Número desbloqueado pelo operador. "
-            "O lead pode enviar mensagens novamente. "
-            "Histórico anterior preservado."
-        ),
-        role="ai",
-    )
+    if body.message:
+        # Envia mensagem ao lead e salva no historico como AIMessage
+        await send_whatsapp_message(phone, body.message)
+        await append_message_to_history(phone=phone, content=body.message, role="ai")
+    else:
+        # Apenas salva anotacao interna sem enviar ao WhatsApp
+        await append_message_to_history(
+            phone=phone,
+            content=(
+                "[SISTEMA] Número desbloqueado pelo operador. "
+                "O lead pode enviar mensagens novamente. "
+                "Histórico anterior preservado."
+            ),
+            role="ai",
+        )
