@@ -91,6 +91,65 @@ def _serialize_state(state: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Utilitario: salva mensagem no historico sem invocar o grafo
+# ---------------------------------------------------------------------------
+
+
+async def append_message_to_history(
+    phone: str,
+    content: str,
+    role: str,  # "human" | "ai"
+    *,
+    utm_source: Optional[str] = None,
+) -> bool:
+    """
+    Adiciona uma mensagem ao historico da conversa SEM invocar o grafo.
+
+    Usado para:
+      - Salvar mensagens de leads bloqueados (role="human")
+      - Registrar evento de desbloqueio (role="ai")
+
+    Cria lead e conversa se ainda nao existirem. Retorna True se ok.
+    """
+    role_to_type = {"human": "HumanMessage", "ai": "AIMessage"}
+    msg_type_str = role_to_type.get(role, "HumanMessage")
+
+    try:
+        async with async_session() as session:
+            lead_svc = LeadService(session)
+            conv_svc = ConversationService(session)
+
+            lead, _ = await lead_svc.get_or_create(phone, utm_source=utm_source)
+            conv, _ = await conv_svc.get_or_create_active(lead.id)
+
+            persisted: dict[str, Any] = conv.graph_state or {}
+            existing_msgs: list[dict] = persisted.get("messages", [])
+
+            new_msg = {"type": msg_type_str, "content": content, "additional_kwargs": {}}
+            updated_state = {**persisted, "messages": existing_msgs + [new_msg]}
+
+            await conv_svc.update_graph_state(
+                conversation=conv,
+                graph_state=updated_state,
+                current_node=conv.current_node or "",
+            )
+
+            logger.info(
+                "RUNNER | append_message_to_history | phone=%s | role=%s | preview=%s",
+                phone,
+                role,
+                content[:80].replace("\n", " "),
+            )
+            return True
+
+    except Exception:
+        logger.exception(
+            "RUNNER | append_message_to_history falhou | phone=%s | role=%s", phone, role
+        )
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Funcao principal - mensagem real do lead
 # ---------------------------------------------------------------------------
 

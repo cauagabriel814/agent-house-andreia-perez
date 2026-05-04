@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import delete, select
 
 from src.agent.guardrails import INPUT_BLOCKED_MESSAGE, check_input
-from src.agent.runner import run_agent
+from src.agent.runner import append_message_to_history, run_agent
 from src.agent.tools.uazapi import send_whatsapp_message
 from src.db.database import async_session
 from src.db.models.blocked_number import BlockedNumber
@@ -70,7 +70,24 @@ async def handle_incoming_message(payload: dict):
                 select(BlockedNumber).where(BlockedNumber.phone == phone)
             )
             if result.scalar_one_or_none():
-                logger.info("DISPATCHER | Numero bloqueado ignorado | phone=%s", phone)
+                logger.info(
+                    "DISPATCHER | Numero bloqueado | salvando mensagem no historico | phone=%s",
+                    phone,
+                )
+                raw_content = content if not isinstance(content, dict) else None
+                if raw_content:
+                    save_content = raw_content
+                elif msg_type in _MEDIA_TYPES:
+                    save_content = f"[Mídia recebida: {msg_type}]"
+                else:
+                    save_content = "[Mensagem recebida]"
+
+                await append_message_to_history(
+                    phone=phone,
+                    content=save_content,
+                    role="human",
+                    utm_source=utm_source,
+                )
                 return
 
     # Garante que content seja sempre str ou None (UAZAPI pode enviar dict para midia)

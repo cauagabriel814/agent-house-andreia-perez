@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.agent.runner import append_message_to_history
 from src.api.auth.dependencies import get_admin_user
 from src.db.database import get_session
 from src.db.models.blocked_number import BlockedNumber
@@ -84,3 +85,14 @@ async def remove_blocked(
         raise HTTPException(status_code=404, detail="Numero nao encontrado na blocklist")
     await session.delete(entry)
     await session.commit()
+
+    # Salva anotacao de sistema no historico da conversa (sem enviar ao WhatsApp)
+    await append_message_to_history(
+        phone=phone,
+        content=(
+            "[SISTEMA] Número desbloqueado pelo operador. "
+            "O lead pode enviar mensagens novamente. "
+            "Histórico anterior preservado."
+        ),
+        role="ai",
+    )
