@@ -51,6 +51,12 @@ def route_entry(state: AgentState) -> str:
     current_node = state.get("current_node") or ""
 
     if not current_node or current_node == "start":
+        # Se ja existem mensagens anteriores no historico (ex.: lead desbloqueado que
+        # enviou mensagens enquanto bloqueado), pula o greeting e vai direto para
+        # active_listen para que o router use o historico completo como contexto.
+        messages = state.get("messages") or []
+        if len(messages) > 1:
+            return "active_listen"
         return "greeting"
 
     if current_node == "greeting":
