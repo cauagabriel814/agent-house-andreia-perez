@@ -51,11 +51,19 @@ def route_entry(state: AgentState) -> str:
     current_node = state.get("current_node") or ""
 
     if not current_node or current_node == "start":
-        # Se ja existem mensagens anteriores no historico (ex.: lead desbloqueado que
-        # enviou mensagens enquanto bloqueado), pula o greeting e vai direto para
-        # active_listen para que o router use o historico completo como contexto.
+        # Se o operador ja enviou uma mensagem real ao lead (ex.: mensagem de desbloqueio),
+        # pula o greeting e vai direto para active_listen — o agente nao precisa se
+        # apresentar pois o contato ja foi iniciado.
+        # Ignora anotacoes internas [SISTEMA] que nao representam mensagem real ao lead.
         messages = state.get("messages") or []
-        if len(messages) > 1:
+        prior_messages = messages[:-1]  # exclui a mensagem atual do lead
+        operator_sent_message = any(
+            getattr(msg, "__class__", None) is not None
+            and msg.__class__.__name__ == "AIMessage"
+            and not getattr(msg, "content", "").startswith("[SISTEMA]")
+            for msg in prior_messages
+        )
+        if operator_sent_message:
             return "active_listen"
         return "greeting"
 
