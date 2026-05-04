@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.agent.runner import append_message_to_history
 from src.agent.tools.uazapi import send_whatsapp_message
 from src.api.auth.dependencies import get_admin_user
+from src.utils.phone import phone_variants
 from src.db.database import get_session
 from src.db.models.blocked_number import BlockedNumber
 from src.db.models.user import User
@@ -67,7 +68,9 @@ async def add_blocked(
     _: User = Depends(get_admin_user),
 ):
     phone = body.phone.strip()
-    existing = await session.execute(select(BlockedNumber).where(BlockedNumber.phone == phone))
+    existing = await session.execute(
+        select(BlockedNumber).where(BlockedNumber.phone.in_(phone_variants(phone)))
+    )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Numero ja esta na blocklist")
 

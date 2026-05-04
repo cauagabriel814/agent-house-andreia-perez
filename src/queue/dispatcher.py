@@ -4,6 +4,7 @@ from sqlalchemy import delete, select
 
 from src.agent.guardrails import INPUT_BLOCKED_MESSAGE, check_input
 from src.agent.runner import append_message_to_history, run_agent
+from src.utils.phone import phone_variants
 from src.agent.tools.uazapi import send_whatsapp_message
 from src.db.database import async_session
 from src.db.models.blocked_number import BlockedNumber
@@ -67,7 +68,7 @@ async def handle_incoming_message(payload: dict):
     if phone:
         async with async_session() as session:
             result = await session.execute(
-                select(BlockedNumber).where(BlockedNumber.phone == phone)
+                select(BlockedNumber).where(BlockedNumber.phone.in_(phone_variants(phone)))
             )
             if result.scalar_one_or_none():
                 logger.info(

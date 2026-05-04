@@ -46,6 +46,7 @@ from src.jobs.retorno_9h import execute_retorno_9h
 from src.services.conversation_service import ConversationService
 from src.services.job_service import JobService
 from src.utils.logger import logger
+from src.utils.phone import phone_variants
 
 # Task do scheduler (singleton)
 _scheduler_task: asyncio.Task | None = None
@@ -99,7 +100,7 @@ async def _lead_is_blocked(lead_id) -> bool:
         if not lead:
             return False
         result = await session.execute(
-            select(BlockedNumber).where(BlockedNumber.phone == lead.phone)
+            select(BlockedNumber).where(BlockedNumber.phone.in_(phone_variants(lead.phone)))
         )
         return result.scalar_one_or_none() is not None
 
