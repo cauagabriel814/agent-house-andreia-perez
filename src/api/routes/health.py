@@ -54,8 +54,14 @@ async def _check_uazapi() -> dict:
                 data.get("state")
                 or data.get("status")
                 or (data.get("instance") or {}).get("state")
-                or ""
+                or {}
             )
+            # state pode ser um dict: {"connected": True, "loggedIn": True, ...}
+            if isinstance(state, dict):
+                if state.get("connected") or state.get("loggedIn"):
+                    return {"ok": True, "state": state}
+                return {"ok": False, "reason": f"disconnected (state={state!r})"}
+            # state pode ser uma string: "open", "connected", etc.
             if str(state).lower() in ("open", "connected"):
                 return {"ok": True, "state": state}
             return {"ok": False, "reason": f"disconnected (state={state!r})"}
