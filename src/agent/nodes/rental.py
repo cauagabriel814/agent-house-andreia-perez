@@ -481,6 +481,28 @@ async def _rental_node_impl(state: AgentState) -> dict:
         logger.info("RENTAL | Capturando email e encerrando fluxo | phone=%s", phone)
 
         email = await _extract_email(effective_message)
+
+        # Se o lead não forneceu um e-mail válido, re-pergunta (até 2x)
+        if email.lower() in ("nao informado", "nao_informado", "off_topic", ""):
+            reask = reask_count + 1
+            if reask <= 2:
+                logger.info(
+                    "RENTAL | Email nao identificado, re-perguntando (%d/2) | phone=%s",
+                    reask,
+                    phone,
+                )
+                await send_whatsapp_message(phone, RENTAL_ASK_EMAIL)
+                return {
+                    "current_node": "rental",
+                    "tags": tags,
+                    "kommo_contact_id": kommo_contact_id,
+                    "kommo_lead_id": kommo_lead_id,
+                    "awaiting_response": True,
+                    "last_question": "rental_email",
+                    "reask_count": reask,
+                    "messages": [AIMessage(content=RENTAL_ASK_EMAIL)],
+                }
+
         tags = await _save_tag(lead_id, tags, "email_lead", email)
 
         if lead_id:

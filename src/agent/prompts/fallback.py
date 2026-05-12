@@ -34,6 +34,17 @@ _CLARIFICATION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Remove endereços de e-mail da mensagem antes de checar FAQ.
+# Evita falsos positivos quando o domínio do e-mail contém palavras da empresa
+# (ex: "gustavo@residere.com.br" não é uma pergunta sobre a imobiliária).
+_EMAIL_PATTERN = re.compile(r"[\w.+%-]+@[\w.-]+\.[a-zA-Z]{2,}", re.IGNORECASE)
+
+
+def _strip_emails(message: str) -> str:
+    """Remove endereços de e-mail da mensagem antes de aplicar detecção de FAQ."""
+    return _EMAIL_PATTERN.sub("", message).strip()
+
+
 # Detecta perguntas sobre a empresa ou processos imobiliários que devem ir para o FAQ.
 # Diferente das clarificações genéricas, aqui o lead menciona algo específico.
 _FAQ_RE = re.compile(
@@ -93,8 +104,14 @@ def is_faq_question(message: str) -> bool:
     Exemplos: 'O que é a Casa Andreia Perez?', 'Qual o endereço de vocês?', 'Qual o CNPJ?'
     Diferente de is_clarification(): aqui o lead pergunta sobre algo específico externo ao fluxo.
     Usa somente regex (sem LLM) — rápido e sem custo.
+
+    E-mails são removidos antes da verificação para evitar falsos positivos quando o
+    domínio do e-mail contém palavras-chave da empresa (ex: "joao@residere.com.br").
     """
-    return bool(_FAQ_RE.search(message.strip()))
+    clean = _strip_emails(message)
+    if not clean:
+        return False
+    return bool(_FAQ_RE.search(clean))
 
 
 # Indicadores rápidos de que a mensagem pode ser uma pergunta (pré-filtro antes do LLM)

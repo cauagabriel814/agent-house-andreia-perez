@@ -104,7 +104,16 @@ async def faq_node(state: AgentState) -> dict:
                 await send_whatsapp_message(phone, TECHNICAL_ERROR_MESSAGE)
             except Exception:
                 pass
-            return {"current_node": "faq", "last_question": None, "awaiting_response": False}
+            # Preserva o last_question original do fluxo para que route_entry
+            # consiga retomar o node correto na próxima mensagem
+            tags = dict(state.get("tags") or {})
+            original_lq = tags.pop("_faq_original_lq", None)
+            return {
+                "current_node": "faq",
+                "last_question": original_lq or None,
+                "awaiting_response": bool(original_lq),
+                "tags": tags,
+            }
 
     # --- Fluxo normal de FAQ ---
     try:
